@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
   infoTitle: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#ff8a3d",
+    color: "#0062ffff",
     textAlign: "center",
     marginBottom: 8,
   },
@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     paddingVertical: 13,
     borderRadius: 10,
-    backgroundColor: "#ff8a3d",
+    backgroundColor: "#0062ffff",
   },
   infoButtonText: {
     color: "#fff",

@@ -8,7 +8,7 @@ export default function WelcomeScreen() {
 
   return (
     <ImageBackground
-      source={{ uri: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80' }}
+      source={{ uri: 'https://www.kduniv.ac.kr/attach/IMAGE/mimban/TMPL00/2021/9/GfnCrGlJ8SfmAPFIgpT5.jpg' }}
       style={styles.background}
       blurRadius={2}
     >
@@ -19,7 +19,7 @@ export default function WelcomeScreen() {
           mode="contained"
           style={styles.button}
           labelStyle={{ fontSize: 17, fontWeight: 'bold' }}
-          buttonColor="#ff8a3d"
+          buttonColor="#0062ffff"
           textColor="#fff"
           onPress={() => {
             router.push('/(auth)/login');
@@ -31,7 +31,7 @@ export default function WelcomeScreen() {
           mode="text"
           style={styles.signupButton}
           labelStyle={{ fontSize: 15 }}
-          textColor="#ff8a3d"
+          textColor="#0062ffff"
           onPress={() => {
             router.push('/(auth)/SignupScreen');
           }}
@@ -50,7 +50,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.75)',
+    backgroundColor: 'rgba(255, 255, 255, 0.75)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#ff8a3d',
+    color: '#0062ffff',
     marginBottom: 16,
     textAlign: 'center',
   },

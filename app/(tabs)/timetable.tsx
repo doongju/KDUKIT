@@ -30,12 +30,13 @@ interface TimetableEntry {
 // 요일
 const daysOfWeek = ['월', '화', '수', '목', '금'];
 
-// 9시 30분부터 시작하여 1시간 간격으로 시간 옵션 생성 (18시 30분까지)
+// ⚠️ 9시 30분부터 시작하여 1시간 간격으로 시간 옵션 생성 (18시 30분까지)
 const generateTimeOptions = () => {
   const options = [];
   for (let h = 9; h <= 18; h++) {
-    const label = `${String(h).padStart(2, '0')}:30`;
-    const value = h + 0.5;
+    const minute = 30;
+    const label = `${String(h).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    const value = h + minute / 60;
     options.push({ label, value });
   }
   return options;
@@ -162,7 +163,7 @@ const TimetableScreen: React.FC = () => {
           isOnline,
         });
         Alert.alert('성공', '시간표 항목이 수정되었습니다!');
-        setIsEditing(false);
+        setIsEditing(false); 
         setCurrentEditId(null);
       } else {
         const newEntry = {
@@ -234,8 +235,9 @@ const TimetableScreen: React.FC = () => {
     }
   };
   
+  // ⚠️ 주간 시간표 UI 렌더링 함수
   const renderTimetableGrid = () => {
-    const timeBlockHeight = 50;
+    const timeBlockHeight = 50; // 1시간 블록의 높이 (px)
 
     return (
       <View style={styles.timetableGrid}>
@@ -248,8 +250,9 @@ const TimetableScreen: React.FC = () => {
             </View>
           ))}
         </View>
+        
         {/* 시간표 그리드 */}
-        {timeOptions.map((timeObj, index) => (
+        {timeOptions.map((timeObj) => (
           <View key={timeObj.label} style={[styles.timeRow, { height: timeBlockHeight }]}>
             <View style={styles.timeHeaderCell}>
               <Text style={styles.timeHeaderText}>{timeObj.label}</Text>
@@ -263,33 +266,33 @@ const TimetableScreen: React.FC = () => {
                     const lectureEndValue = parsedTime.end;
                     const gridTimeStartValue = timeObj.value;
 
-                    if (lectureStartValue >= gridTimeStartValue && lectureStartValue < gridTimeStartValue + 1) {
-                        const durationInHours = lectureEndValue - lectureStartValue;
-                        const topOffset = (lectureStartValue - gridTimeStartValue) * timeBlockHeight;
+                    // 강의 블록을 해당 강의가 시작하는 그리드 row에서만 렌더링
+                    if (lectureStartValue === gridTimeStartValue) {
+                      const durationInHours = lectureEndValue - lectureStartValue; // 총 강의 시간
+                      const blockHeight = durationInHours * timeBlockHeight; // 블록의 실제 높이
 
-                        const blockHeight = durationInHours * timeBlockHeight;
-
-                        return (
-                            <TouchableOpacity
-                                key={item.id}
-                                style={[styles.courseBlock, {
-                                    height: blockHeight,
-                                    top: topOffset,
-                                }]}
-                                onPress={() => Alert.alert(
-                                    item.courseName,
-                                    `교수: ${item.professor}\n위치: ${item.location}\n시간: ${item.time}`,
-                                    [
-                                        { text: "수정", onPress: () => handleEditStart(item) },
-                                        { text: "삭제", onPress: () => handleDeleteEntry(item.id) },
-                                        { text: "닫기" }
-                                    ]
-                                )}
-                            >
-                                <Text style={styles.courseBlockText}>{item.courseName}</Text>
-                                <Text style={styles.courseBlockLocation}>{item.location}</Text>
-                            </TouchableOpacity>
-                        );
+                      return (
+                        <TouchableOpacity
+                          key={item.id}
+                          style={[styles.courseBlock, {
+                            height: blockHeight,
+                            top: 0, // 해당 dayCell의 상단에 고정
+                            zIndex: 10, // 다른 셀들의 경계선 위로 올라오도록 zIndex 높임
+                          }]}
+                          onPress={() => Alert.alert(
+                            item.courseName,
+                            `교수: ${item.professor}\n위치: ${item.location}\n시간: ${item.time}`,
+                            [
+                              { text: "수정", onPress: () => handleEditStart(item) },
+                              { text: "삭제", onPress: () => handleDeleteEntry(item.id) },
+                              { text: "닫기" }
+                            ]
+                          )}
+                        >
+                          <Text style={styles.courseBlockText}>{item.courseName}</Text>
+                          <Text style={styles.courseBlockLocation}>{item.location}</Text>
+                        </TouchableOpacity>
+                      );
                     }
                   }
                   return null;
@@ -476,7 +479,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingBottom: 15,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#ddd',
@@ -499,6 +502,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
+    paddingBottom: 40,
   },
   formHeader: {
     fontSize: 20,

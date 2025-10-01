@@ -46,7 +46,7 @@ export default function LoginScreen() {
         onPress={handleLogin}
         loading={loading}
         style={styles.button}
-        buttonColor="#ff8a3d"
+        buttonColor="#0062ffff"
         textColor="#fff"
       >
         로그인
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#ff8a3d',
+    color: '#0062ffff',
     marginBottom: 32,
     textAlign: 'center',
   },
