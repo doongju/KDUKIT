@@ -1,15 +1,13 @@
 import { useRouter } from "expo-router";
-import { signOut } from "firebase/auth";
 import React from "react";
 import {
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View
 } from "react-native";
-import { auth } from "../../firebaseConfig";
+import { useSafeAreaInsets } from 'react-native-safe-area-context'; // ⚠️ Safe Area 훅 임포트
 
 // 시간표 데이터 타입
 interface TimetableItem {
@@ -47,24 +45,16 @@ const featureIcons: Record<string, string> = {
 
 const ExploreScreen: React.FC = () => {
   const router = useRouter();
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      Alert.alert("로그아웃 성공", "다음에 또 만나요!");
-      router.replace('/'); 
-    } catch (error: any) {
-      Alert.alert("로그아웃 실패", error.message);
-    }
-  };
+  const insets = useSafeAreaInsets(); // ⚠️ Safe Area 인셋 가져오기
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutButtonText}>로그아웃</Text>
-        </TouchableOpacity>
+      {/* ⚠️ 상단 View에 Safe Area 패딩을 적용하여 노치 영역 피하기 */}
+      <View style={{ paddingTop: insets.top, backgroundColor: '#fff' }} />
 
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 16 }]}>
+        
+        {/* 내 시간표 카드 */}
         <View style={styles.card}>
           <View style={styles.cardContent}>
             <Text style={styles.cardTitle}>내 시간표</Text>
@@ -77,6 +67,7 @@ const ExploreScreen: React.FC = () => {
           </View>
         </View>
 
+        {/* 기타 수업 목록 카드 */}
         <View style={styles.card}>
           <View style={styles.cardContent}>
             <Text style={styles.cardTitle}>기타 수업 목록</Text>
@@ -91,6 +82,7 @@ const ExploreScreen: React.FC = () => {
           </View>
         </View>
 
+        {/* 주요 기능 그리드 */}
         <View style={styles.featuresGrid}>
           {Object.entries(featureIcons).map(([feature, icon]) => (
             <TouchableOpacity key={feature} style={styles.featureCard}>
@@ -102,6 +94,7 @@ const ExploreScreen: React.FC = () => {
           ))}
         </View>
 
+        {/* 정보 카드 */}
         <View style={styles.infoCard}>
           <View style={styles.cardContent}>
             <Text style={styles.infoTitle}>KDUKIT에 오신 것을 환영합니다!</Text>
@@ -126,21 +119,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f5f5f5",
   },
+  // ⚠️ scrollContent에서 상단 패딩 제거 (인셋이 처리)
   scrollContent: {
     padding: 16,
   },
-  logoutButton: {
-    backgroundColor: '#ff5c5c',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  logoutButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  // ⚠️ 로그아웃 버튼 관련 스타일 제거
   card: {
     marginBottom: 16,
     borderRadius: 12,
