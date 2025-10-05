@@ -38,6 +38,8 @@ export default function RootLayout() {
         // 사용자가 로그인되어 있지 않으면 (auth) 그룹을 보여줌
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       )}
+      {/* ⚠️ 채팅 경로에 대한 Stack.Screen을 추가하여 헤더를 숨깁니다. */}
+      <Stack.Screen name="chat" options={{ headerShown: false }} />
       {/* 404 페이지도 명시적으로 여기에 포함시키는 것이 좋습니다. */}
       <Stack.Screen name="+not-found" options={{ headerShown: false }} />
     </Stack>
