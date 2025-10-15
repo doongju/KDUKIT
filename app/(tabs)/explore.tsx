@@ -1,13 +1,15 @@
 import { useRouter } from "expo-router";
 import React from "react";
 import {
+  Alert // Alert 추가: 존재하지 않는 기능에 대한 사용자 피드백
+  ,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View
 } from "react-native";
-import { useSafeAreaInsets } from 'react-native-safe-area-context'; // ⚠️ Safe Area 훅 임포트
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // 시간표 데이터 타입
 interface TimetableItem {
@@ -45,11 +47,29 @@ const featureIcons: Record<string, string> = {
 
 const ExploreScreen: React.FC = () => {
   const router = useRouter();
-  const insets = useSafeAreaInsets(); // ⚠️ Safe Area 인셋 가져오기
+  const insets = useSafeAreaInsets();
+
+  // ⚠️ 기능 카드 클릭 핸들러: 택시 파티 기능 추가
+  const handleFeaturePress = (featureName: string) => {
+    switch (featureName) {
+      case "택시 파티":
+        // 새로운 taxiparty.tsx 경로로 이동
+        router.push('/(tabs)/taxiparty');
+        break;
+      case "중고 마켓":
+      case "셔틀버스":
+      case "동아리 모집":
+      case "분실물 센터":
+      default:
+        // 나머지 미구현 기능에 대한 알림
+        Alert.alert("준비 중", `${featureName} 기능은 현재 개발 중입니다. 잠시만 기다려 주세요!`);
+        break;
+    }
+  };
 
   return (
     <View style={styles.container}>
-      {/* ⚠️ 상단 View에 Safe Area 패딩을 적용하여 노치 영역 피하기 */}
+      {/* 상단 View에 Safe Area 패딩을 적용하여 노치 영역 피하기 */}
       <View style={{ paddingTop: insets.top, backgroundColor: '#fff' }} />
 
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 16 }]}>
@@ -85,7 +105,12 @@ const ExploreScreen: React.FC = () => {
         {/* 주요 기능 그리드 */}
         <View style={styles.featuresGrid}>
           {Object.entries(featureIcons).map(([feature, icon]) => (
-            <TouchableOpacity key={feature} style={styles.featureCard}>
+            // ⚠️ onPress 이벤트 핸들러 추가
+            <TouchableOpacity 
+              key={feature} 
+              style={styles.featureCard}
+              onPress={() => handleFeaturePress(feature)} 
+            >
               <View style={styles.featureCardContent}>
                 <Text style={styles.featureIcon}>{icon}</Text>
                 <Text style={styles.featureText}>{feature}</Text>
