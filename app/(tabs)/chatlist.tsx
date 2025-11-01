@@ -1,233 +1,247 @@
-// app/chatlist.tsx 파일
-import { router, useNavigation } from 'expo-router';
-import { onAuthStateChanged } from 'firebase/auth';
-import { collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AlertButton, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native'; // AlertButton 추가
-import { auth, db } from '../../firebaseConfig'; // db와 auth 인스턴스를 가져옵니다.
+// app/(tabs)/chatlist.tsx
 
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { getAuth } from 'firebase/auth';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import React, { useCallback, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { db } from '../../firebaseConfig';
 
 interface ChatRoom {
   id: string;
-  lastMessage: string;
-  timestamp: Date;
-  otherUserName: string;
+  partyId?: string;
+  name: string;
+  lastMessage?: string;
+  lastMessageTimestamp?: any;
+  members: string[];
+  type: 'private' | 'party';
+  otherMemberName?: string;
 }
 
-const ChatListScreen: React.FC = () => {
-  const navigation = useNavigation();
+export default function ChatListScreen() {
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const auth = getAuth();
+  const currentUser = auth.currentUser;
+
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loggedInUser, setLoggedInUser] = useState<any | null>(undefined); // undefined: 로딩 중, null: 로그아웃, User: 로그인됨
 
-  // ------------------------------------------------------------------
-  // Auth 상태 리스너: 앱 시작 시 한 번만 실행하여 로그인 상태를 추적
-  // ------------------------------------------------------------------
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      setLoggedInUser(user); // 로그인 상태 업데이트
-      if (user) {
-        console.log("DEBUG: ChatListScreen - Auth State Changed. Logged In User UID:", user.uid);
-      } else {
-        console.log("DEBUG: ChatListScreen - Auth State Changed. User is Logged Out.");
+  useFocusEffect(
+    useCallback(() => {
+      if (!currentUser) {
+        setLoading(false);
+        setChatRooms([]);
+        return;
       }
-    });
 
-    return () => unsubscribeAuth(); // 컴포넌트 언마운트 시 리스너 해제
-  }, []); // 의존성 배열을 비워 앱 시작 시 한 번만 실행되도록 함
+      setLoading(true);
 
-  // ------------------------------------------------------------------
-  // 채팅방 목록 로드: loggedInUser 상태가 변경될 때마다 실행
-  // ------------------------------------------------------------------
-  useEffect(() => {
-    // loggedInUser가 아직 undefined (로딩 중) 이면 아무것도 하지 않음
-    if (loggedInUser === undefined) {
-      return; 
-    }
+      const q = query(
+        collection(db, 'chatRooms'),
+        where('members', 'array-contains', currentUser.uid)
+      );
 
-    // loggedInUser가 null (로그아웃 상태) 이면 로딩 완료 처리하고 리턴
-    if (loggedInUser === null) {
-      setChatRooms([]); // 채팅방 목록 비우기
-      setLoading(false);
-      return;
-    }
+      const unsubscribe = onSnapshot(q, async (querySnapshot) => {
+        const rooms: ChatRoom[] = [];
+        for (const docSnap of querySnapshot.docs) {
+          const data = docSnap.data();
+          let roomName = data.name;
 
-    // 로그인된 사용자 (loggedInUser가 User 객체)
-    setLoading(true); // 채팅방 로딩 시작
-
-    const chatsRef = collection(db, 'chats');
-    const q = query(chatsRef, where('users', 'array-contains', loggedInUser.uid), orderBy('timestamp', 'desc'));
-
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const loadedChatRooms: ChatRoom[] = [];
-      for (const docSnap of snapshot.docs) {
-        const roomData = docSnap.data();
-        const otherUid = roomData.users.find((uid: string) => uid !== loggedInUser.uid); // 다른 사용자 UID 찾기
-
-        let otherUserName = "알 수 없는 사용자";
-        if (otherUid) {
-          const userDoc = await getDoc(doc(db, 'users', otherUid));
-          if (userDoc.exists()) {
-            otherUserName = userDoc.data()?.name || "익명";
-          } else {
-            console.warn(`WARN: User document not found for otherUid: ${otherUid} in chat room ${docSnap.id}`);
+          if (data.type === 'private' && data.members.length === 2) {
+            const otherMemberId = data.members.find((id: string) => id !== currentUser.uid);
+            roomName = otherMemberId ? `상대방 (${otherMemberId.substring(0, 5)}...)` : '알 수 없음';
+          } else if (data.type === 'party' && data.partyId) {
+            roomName = `택시 파티 (${data.partyId.substring(0, 5)}...)`; 
           }
-        } else {
-             console.warn(`WARN: Could not find 'otherUid' in chat room ${docSnap.id} for user ${loggedInUser.uid}. Is 'users' array correctly populated with two UIDs?`);
+
+          rooms.push({
+            id: docSnap.id,
+            partyId: data.partyId,
+            name: roomName,
+            lastMessage: data.lastMessage,
+            lastMessageTimestamp: data.lastMessageTimestamp,
+            members: data.members,
+            type: data.type,
+          });
         }
-        
-        loadedChatRooms.push({
-          id: docSnap.id,
-          lastMessage: roomData.lastMessage || "대화 내용 없음",
-          timestamp: roomData.timestamp?.toDate() || new Date(),
-          otherUserName: otherUserName,
-        });
-      }
-      setChatRooms(loadedChatRooms);
-      setLoading(false);
-    }, (error) => {
-      console.error("ERROR: Failed to fetch chat rooms:", error);
-      Alert.alert("채팅 목록 오류", `채팅방 목록을 불러오는데 실패했습니다: ${error.message}`);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [loggedInUser]); // 로그인 상태 (loggedInUser)가 변경될 때마다 이펙트 재실행
-
-  const generateRandomUid = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-
-  const createTestChatRoom = async () => {
-    if (!loggedInUser) {
-      Alert.alert('로그인 필요', '테스트 채팅방을 만들려면 먼저 로그인해야 합니다.');
-      return;
-    }
-
-    const testOtherUserUid = generateRandomUid(); 
-    const chatRoomUsers = [loggedInUser.uid, testOtherUserUid].sort(); 
-    const chatRoomId = chatRoomUsers.join('_'); 
-
-    try {
-      const otherUserDocRef = doc(db, 'users', testOtherUserUid);
-      await setDoc(otherUserDocRef, { name: '테스트상대', email: `${testOtherUserUid}@test.com` }, { merge: true }); 
-
-      const newChatRoomRef = doc(db, 'chats', chatRoomId);
-      await setDoc(newChatRoomRef, {
-        users: chatRoomUsers,
-        lastMessage: '새로운 테스트 채팅방이 생성되었습니다.',
-        timestamp: serverTimestamp(),
-        lastReadBy: {
-          [loggedInUser.uid]: serverTimestamp(), 
-          [testOtherUserUid]: serverTimestamp(), 
-        },
+        setChatRooms(rooms);
+        setLoading(false);
+      }, (error) => {
+        console.error("Error fetching chat rooms: ", error);
+        setLoading(false);
       });
-      
-      Alert.alert('성공', `테스트 채팅방 '${chatRoomId}'이(가) 생성되었습니다.`);
-      router.push(`/chat/${chatRoomId}`);
 
-    } catch (e: any) {
-      console.error("Error creating test chat room:", e);
-      Alert.alert('오류', `테스트 채팅방 생성 실패: ${e.message}`);
-    }
+      return () => unsubscribe();
+    }, [currentUser])
+  );
+
+  const handleChatRoomPress = (chatRoomId: string) => {
+    // ✨ 수정된 라우팅 경로
+    router.push(`/chat/${chatRoomId}`); 
   };
 
-  const goToSpecificChatRoom = () => {
-    Alert.prompt(
-      '채팅방 ID 입력',
-      '접속할 채팅방의 정확한 ID를 입력하세요 (예: UID1_UID2):',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '이동',
-          // ✨ AlertButton의 onPress 타입으로 단언
-          onPress: ((inputChatId: string) => { 
-            if (inputChatId && inputChatId.trim() !== '') {
-              router.push(`/chat/${inputChatId.trim()}`);
-            } else {
-              Alert.alert('오류', '채팅방 ID를 입력해주세요.');
-            }
-          }) as AlertButton['onPress'], // ✨ as AlertButton['onPress']
-        },
-      ],
-      'plain-text'
-    );
-  };
-  
-  if (loading || loggedInUser === undefined) {
-    return <ActivityIndicator style={styles.loading} size="large" color="#0062ffff" />;
-  }
+  const renderChatRoomItem = ({ item }: { item: ChatRoom }) => (
+    <TouchableOpacity
+      style={styles.chatRoomItem}
+      onPress={() => handleChatRoomPress(item.id)}>
+      <View style={styles.chatRoomIcon}>
+        <Ionicons name={item.type === 'party' ? "people" : "person"} size={24} color="#0062ffff" />
+      </View>
+      <View style={styles.chatRoomInfo}>
+        <Text style={styles.chatRoomName} numberOfLines={1}>
+          {item.name}
+        </Text>
+        {item.lastMessage && (
+          <Text style={styles.lastMessage} numberOfLines={1}>
+            {item.lastMessage}
+          </Text>
+        )}
+      </View>
+      {item.lastMessageTimestamp && (
+        <Text style={styles.timestamp}>
+          {new Date(item.lastMessageTimestamp.toDate()).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+        </Text>
+      )}
+    </TouchableOpacity>
+  );
 
-  if (loggedInUser === null) {
+  if (!currentUser) {
     return (
-      <View style={styles.centeredContainer}>
-        <Text style={styles.noChatsText}>로그인 후 채팅 목록을 볼 수 있습니다.</Text>
-        <TouchableOpacity style={styles.loginButton} onPress={() => router.replace('/')}>
-          <Text style={styles.loginButtonText}>로그인 화면으로 이동</Text>
-        </TouchableOpacity>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <Text style={styles.header}>채팅 목록</Text>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>로그인이 필요합니다.</Text>
+          <TouchableOpacity 
+            style={styles.loginButton} 
+            onPress={() => router.replace('/(auth)/login')}
+          >
+            <Text style={styles.loginButtonText}>로그인하기</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.testButtonsContainer}>
-        <TouchableOpacity style={styles.testButton} onPress={createTestChatRoom}>
-          <Text style={styles.testButtonText}>테스트 채팅방 생성</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.testButton} onPress={goToSpecificChatRoom}>
-          <Text style={styles.testButtonText}>ID로 채팅방 이동</Text>
-        </TouchableOpacity>
-      </View>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <Text style={styles.header}>채팅 목록</Text>
 
-      {chatRooms.length === 0 ? (
-        <View style={styles.centeredContainer}>
-          <Text style={styles.noChatsText}>아직 채팅방이 없습니다.</Text>
-          <Text style={styles.noChatsSubText}>위 버튼으로 테스트 채팅방을 만들어보세요!</Text>
+      {loading ? (
+        <ActivityIndicator size="large" color="#0062ffff" style={{ marginTop: 50 }} />
+      ) : chatRooms.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="chatbubbles-outline" size={80} color="#ccc" />
+          <Text style={styles.emptyText}>아직 참여 중인 채팅방이 없어요.</Text>
+          <Text style={styles.emptySubText}>택시 파티에 참여하여 채팅을 시작해보세요!</Text>
         </View>
       ) : (
         <FlatList
           data={chatRooms}
+          renderItem={renderChatRoomItem}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.chatItem}
-              onPress={() => router.push(`/chat/${item.id}`)}
-            >
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{item.otherUserName.charAt(0)}</Text>
-              </View>
-              <View style={styles.chatContent}>
-                <Text style={styles.chatTitle}>{item.otherUserName}</Text>
-                <Text style={styles.lastMessage} numberOfLines={1}>{item.lastMessage}</Text>
-              </View>
-              <Text style={styles.timestamp}>
-                {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </Text>
-            </TouchableOpacity>
-          )}
+          contentContainerStyle={styles.listContentContainer}
         />
       )}
     </View>
   );
-};
-
-export default ChatListScreen;
+}
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f0f2f5' },
-    loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    centeredContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-    noChatsText: { fontSize: 18, color: '#666', marginBottom: 10, fontWeight: 'bold' },
-    noChatsSubText: { fontSize: 14, color: '#888', marginBottom: 20, textAlign: 'center' },
-    loginButton: { backgroundColor: '#007bff', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 5 },
-    loginButtonText: { color: 'white', fontSize: 16 },
-    chatItem: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e0e0e0' },
-    avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#0062ffff', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-    avatarText: { color: 'white', fontSize: 20, fontWeight: 'bold' },
-    chatContent: { flex: 1, justifyContent: 'center' },
-    chatTitle: { fontSize: 17, fontWeight: 'bold', color: '#333' },
-    lastMessage: { fontSize: 14, color: '#777', marginTop: 2 },
-    timestamp: { fontSize: 12, color: '#999' },
-    testButtonsContainer: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#e0e0e0', backgroundColor: '#fff' },
-    testButton: { backgroundColor: '#28a745', paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8, marginHorizontal: 5 },
-    testButtonText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  header: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    paddingHorizontal: 20,
+    marginBottom: 15,
+    color: '#0062ffff',
+  },
+  listContentContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  chatRoomItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  chatRoomIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#e8f0fe',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  chatRoomInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  chatRoomName: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 2,
+  },
+  lastMessage: {
+    fontSize: 14,
+    color: '#666',
+  },
+  timestamp: {
+    fontSize: 12,
+    color: '#999',
+    marginLeft: 10,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyText: {
+    fontSize: 18,
+    color: '#555',
+    fontWeight: 'bold',
+    marginTop: 20,
+  },
+  emptySubText: {
+    fontSize: 14,
+    color: '#888',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  loginButton: {
+    backgroundColor: '#0062ffff',
+    paddingVertical: 12,
+    paddingHorizontal: 25,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  loginButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
 });
