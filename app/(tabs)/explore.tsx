@@ -3,6 +3,16 @@ import React from "react";
 import {
   Alert // Alert 추가: 존재하지 않는 기능에 대한 사용자 피드백
   ,
+
+
+
+
+
+
+
+
+
+
   ScrollView,
   StyleSheet,
   Text,
@@ -56,9 +66,11 @@ const ExploreScreen: React.FC = () => {
         // 새로운 taxiparty.tsx 경로로 이동
         router.push('/(tabs)/taxiparty');
         break;
+      case "동아리 모집":
+        router.push('/(tabs)/clublist');
+        break;
       case "중고 마켓":
       case "셔틀버스":
-      case "동아리 모집":
       case "분실물 센터":
       default:
         // 나머지 미구현 기능에 대한 알림
