@@ -23,12 +23,13 @@ if (getApps().length === 0) {
   app = getApp();
 }
 
+// 인증 초기화 (AsyncStorage 사용)
 export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(ReactNativeAsyncStorage)
 });
 
+// 데이터베이스 초기화
 export const db = getFirestore(app);
-export const storage = getStorage(app);
 
-// auth, db, storage를 한 번에 내보냅니다.
-// export { auth, db, storage };
+// ✨ 스토리지(이미지 저장소) 초기화 ✨
+export const storage = getStorage(app);

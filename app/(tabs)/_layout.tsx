@@ -53,17 +53,27 @@ export default function TabLayout() {
         }}
       />
 
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: '내 정보',
+          tabBarIcon: ({ color }) => <Ionicons size={28} name="person" color={color} />, 
+        }}
+      />
+
+      {/* --- 탭 바에 보이지 않는 숨겨진 경로들 --- */}
+
       {/* ⚠️ 택시 파티 목록 화면: 탭 바에서 숨김 처리 */}
       <Tabs.Screen
         name="taxiparty" // 파일명: app/(tabs)/taxiparty.tsx
         options={{
           title: '택시 파티',
           href: null, // 탭 바에 노출되지 않도록 설정
-          headerShown: true,
+          headerShown: true, // taxiparty.tsx 자체 헤더가 없으므로 여기서 표시
         }}
       />
 
-      {/* ⚠️ 새로운 파티 생성 화면: 탭 바에서 숨김 처리 (추가된 부분) */}
+      {/* ⚠️ 새로운 파티 생성 화면: 탭 바에서 숨김 처리 */}
       <Tabs.Screen
         name="create-party" // 파일명: app/(tabs)/create-party.tsx
         options={{
@@ -105,13 +115,26 @@ export default function TabLayout() {
         }}
       />
 
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: '내 정보',
-          tabBarIcon: ({ color }) => <Ionicons size={28} name="person" color={color} />, 
-        }}
+      {/* 👇 [분실물 센터] 경로 */}
+      <Tabs.Screen 
+        name="lost-and-found" // 파일명: app/(tabs)/lost-and-found.tsx
+        options={{ 
+          title: "분실물 센터",
+          href: null, // 탭 바에서 숨기기
+          headerShown: false, // lost-and-found.tsx에서 커스텀 헤더를 사용할 것이므로 숨김
+        }} 
       />
+
+      {/* 👇 [분실물 등록] 페이지 경로를 여기에 추가했습니다! */}
+      <Tabs.Screen 
+        name="create-lost-item" // 파일명: app/(tabs)/create-lost-item.tsx
+        options={{ 
+          title: "분실물 등록",
+          href: null, // 탭 바에서 숨기기
+          headerShown: false, // create-lost-item.tsx에서 커스텀 헤더를 사용할 것이므로 숨김
+        }} 
+      />
+
     </Tabs>
   );
 }

@@ -382,11 +382,23 @@ const modalStyles = StyleSheet.create({
         paddingHorizontal: 20,
         maxHeight: 300, 
     },
+
+    
     optionItem: {
+
+        
         paddingVertical: 15,
+
+        
         borderBottomWidth: 1,
+
+        
         borderBottomColor: '#f0f0f0',
+
+        
         alignItems: 'center',
+
+        
     },
     optionText: {
         fontSize: 17,

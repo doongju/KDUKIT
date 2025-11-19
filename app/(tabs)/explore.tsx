@@ -16,6 +16,7 @@ import {
 
 
 
+
   ScrollView,
   StyleSheet,
   Text,
@@ -62,7 +63,7 @@ const ExploreScreen: React.FC = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  // ⚠️ 기능 카드 클릭 핸들러: 택시 파티 기능 추가
+  // ⚠️ 기능 카드 클릭 핸들러: '분실물 센터' 경로 추가
   const handleFeaturePress = (featureName: string) => {
     switch (featureName) {
       case "택시 파티":
@@ -77,6 +78,16 @@ const ExploreScreen: React.FC = () => {
         break;
       case "셔틀버스":
       case "분실물 센터":
+      
+      // 👇 [수정됨] '분실물 센터' 케이스를 추가하고 '준비 중' 알림 대신 라우터 이동을 실행합니다.
+      case "분실물 센터":
+        router.push('/(tabs)/lost-and-found'); // '/(tabs)/lost-and-found.tsx' 파일로 이동
+        break;
+
+      case "중고 마켓":
+      case "셔틀버스":
+      case "동아리 모집":
+      // case "분실물 센터": // 👈 default 케이스에서 제거
       default:
         // 나머지 미구현 기능에 대한 알림
         Alert.alert("준비 중", `${featureName} 기능은 현재 개발 중입니다. 잠시만 기다려 주세요!`);
