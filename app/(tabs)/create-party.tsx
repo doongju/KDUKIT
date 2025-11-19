@@ -2,7 +2,6 @@
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
-//  Firestore 연동을 위한 임포트 추가
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import React, { useState } from 'react';
@@ -16,28 +15,22 @@ import {
     View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-// Firebase 설정 파일 임포트 추가
 import { db } from '../../firebaseConfig';
 
-// (기존 코드는 변경 없음)
-// 사용 가능한 장소 목록
 const AVAILABLE_LOCATIONS = [
-    '기타 (직접 입력)', // 직접 입력 옵션
+    '기타 (직접 입력)', 
     '학교 정문', 
     '기숙사 앞', 
     '양주역', 
     '덕계역', 
-    
 ];
 
-// 최대 인원 설정
 const MAX_MEMBERS = 4;
 const memberOptions = Array.from({ length: MAX_MEMBERS }, (_, i) => i + 1);
 
-// 9시부터 24시까지 30분 단위 시간 옵션 생성
 const generateTimeOptions = () => {
     const options = [];
-    for (let i = 0; i <= 31; i++) { // 9:00 (i=0) 부터 24:00 (i=30)
+    for (let i = 0; i <= 31; i++) { // 9:00 ~ 24:00
         const totalMinutes = 9 * 60 + i * 30;
         const hour = Math.floor(totalMinutes / 60) % 24;
         const minute = totalMinutes % 60;
@@ -54,7 +47,6 @@ export default function CreatePartyScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
 
-    // 폼 상태 (기존 코드)
     const [departureTime, setDepartureTime] = useState('09:00'); 
     const [pickupLocation, setPickupLocation] = useState(AVAILABLE_LOCATIONS[1]); 
     const [dropoffLocation, setDropoffLocation] = useState(AVAILABLE_LOCATIONS[3]); 
@@ -62,7 +54,6 @@ export default function CreatePartyScreen() {
     const [customPickup, setCustomPickup] = useState(''); 
     const [customDropoff, setCustomDropoff] = useState(''); 
 
-    // 모달 관련 상태 (기존 코드)
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [modalType, setModalType] = useState<'time' | 'pickup' | 'dropoff' | 'members' | null>(null);
 
@@ -76,9 +67,7 @@ export default function CreatePartyScreen() {
         setModalType(null);
     };
 
-    // 폼 제출 핸들러 (기존 코드)
-    const handleCreateParty = async () => { // async 추가
-        // --- Firestore 저장을 위한 코드 추가 ---
+    const handleCreateParty = async () => {
         const auth = getAuth();
         const user = auth.currentUser;
 
@@ -86,7 +75,6 @@ export default function CreatePartyScreen() {
             Alert.alert("로그인 필요", "택시 파티를 생성하려면 로그인이 필요합니다.");
             return;
         }
-        // --- 여기까지 추가 ---
 
         let finalPickup = pickupLocation === '기타 (직접 입력)' ? customPickup : pickupLocation;
         let finalDropoff = dropoffLocation === '기타 (직접 입력)' ? customDropoff : dropoffLocation;
@@ -109,33 +97,29 @@ export default function CreatePartyScreen() {
             pickupLocation: finalPickup,
             dropoffLocation: finalDropoff,
             memberLimit,
-            // --- Firestore 저장을 위한 데이터 추가 ---
-            currentMembers: [user.uid], // 생성자를 첫 멤버로 자동 추가
+            currentMembers: [user.uid], 
             creatorId: user.uid,
-            createdAt: serverTimestamp(), // 서버 시간 기준 생성 시각 기록
-            // --- 여기까지 추가 ---
+            createdAt: serverTimestamp(),
         };
         
-        // --- 기존 Alert 로직을 Firestore 저장 로직으로 변경 ---
         try {
-            // 'taxiParties' 컬렉션에 새로운 파티 정보(문서)를 추가합니다.
             await addDoc(collection(db, "taxiParties"), partyDetails);
             
             Alert.alert('파티 생성 완료', '새로운 택시 파티가 생성되었습니다!');
-            
-            // ✨ 화면 이동 로직 수정 ✨
-            // 이전 화면으로 돌아가는 대신, 택시 파티 목록 화면으로 교체하며 이동합니다.
             router.replace('/(tabs)/taxiparty'); 
 
-        } catch (error) {
-            console.error("파티 생성 중 오류 발생: ", error);
-            Alert.alert("오류", "파티 생성에 실패했습니다. 다시 시도해주세요.");
+        } catch (error: any) {
+            // ✨ [수정됨] 신고 누적으로 인한 차단 에러 처리
+            if (error.code === 'permission-denied' || error.message.includes('permission-denied')) {
+                console.log("Taxi party blocked due to reports.");
+                Alert.alert("이용 제한 🚫", "신고 누적(5회 이상)으로 인해 파티 생성이 제한되었습니다.\n관리자에게 문의해주세요.");
+            } else {
+                console.error("파티 생성 중 오류 발생: ", error);
+                Alert.alert("오류", "파티 생성에 실패했습니다. 다시 시도해주세요.");
+            }
         }
-        // --- 여기까지 변경 ---
     };
     
-    // (이하 나머지 코드는 변경 없음)
-    // Custom Selection Modal Component
     const SelectionModal = () => {
         let options: string[] = [];
         let title = '';
@@ -209,8 +193,6 @@ export default function CreatePartyScreen() {
         );
     };
 
-
-    // 현재 선택된 값을 표시하는 컴포넌트
     const SelectedValueDisplay = ({ value, onPress }: { value: string | number, onPress: () => void }) => (
         <TouchableOpacity style={styles.pickerWrapper} onPress={onPress}>
             <Text style={styles.selectedValue}>{value}{modalType === 'members' ? ' 명' : ''}</Text>
@@ -228,20 +210,17 @@ export default function CreatePartyScreen() {
                     <Text style={styles.header}>새 파티 만들기</Text>
                 </View>
 
-                {/* ScrollView */}
                 <ScrollView 
                     style={styles.scrollView} 
                     contentContainerStyle={styles.scrollContent}
                 >
                     
-                    {/* 출발 시간 설정 */}
                     <Text style={styles.label}>⏰ 출발 시간</Text>
                     <SelectedValueDisplay 
                         value={departureTime} 
                         onPress={() => openModal('time')} 
                     />
 
-                    {/* 탑승 장소 설정 */}
                     <Text style={styles.label}>📍 탑승 장소</Text>
                     <SelectedValueDisplay 
                         value={pickupLocation} 
@@ -256,7 +235,6 @@ export default function CreatePartyScreen() {
                         />
                     )}
                     
-                    {/* 하차 장소 설정 */}
                     <Text style={styles.label}>🏁 하차 장소</Text>
                     <SelectedValueDisplay 
                         value={dropoffLocation} 
@@ -271,21 +249,18 @@ export default function CreatePartyScreen() {
                         />
                     )}
 
-                    {/* 모집 인원 설정 */}
                     <Text style={styles.label}>👥 모집 인원 (운전자 제외)</Text>
                     <SelectedValueDisplay 
                         value={memberLimit} 
                         onPress={() => openModal('members')} 
                     />
 
-                    {/* 파티 생성 버튼 */}
                     <TouchableOpacity style={styles.createButton} onPress={handleCreateParty}>
                         <Text style={styles.createButtonText}>파티 생성하기</Text>
                     </TouchableOpacity>
 
                 </ScrollView>
             </View>
-            {/* 모달 렌더링 */}
             <SelectionModal />
         </View>
     );
@@ -293,7 +268,7 @@ export default function CreatePartyScreen() {
 
 const styles = StyleSheet.create({
     outerContainer: {
-        flex: 1, // 모달을 오버레이하기 위해 최상위 컨테이너 추가
+        flex: 1,
     },
     container: {
         flex: 1, 
@@ -330,7 +305,6 @@ const styles = StyleSheet.create({
         marginTop: 15,
         marginBottom: 8,
     },
-    // Picker 대체 UI (TouchableOpacity)
     pickerWrapper: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -372,22 +346,21 @@ const styles = StyleSheet.create({
     },
 });
 
-// Custom Modal Styles
 const modalStyles = StyleSheet.create({
     overlay: {
         ...StyleSheet.absoluteFillObject,
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
         justifyContent: 'flex-end',
         alignItems: 'center',
-        zIndex: 100, // 최상위
+        zIndex: 100, 
     },
     modalContainer: {
         width: '100%',
-        maxHeight: '60%', // 화면의 60%만 차지
+        maxHeight: '60%', 
         backgroundColor: '#fff',
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
-        paddingBottom: 10, // 스크롤바가 바닥에 붙지 않도록
+        paddingBottom: 10, 
     },
     header: {
         flexDirection: 'row',

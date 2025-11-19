@@ -2,23 +2,23 @@
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams, useRouter } from 'expo-router'; // useFocusEffect 제거
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import React, { useEffect, useState } from 'react'; // useEffect 사용
+import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Modal,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -48,11 +48,10 @@ export default function CreateClubScreen() {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [modalType, setModalType] = useState<'activityField' | 'memberLimit' | null>(null);
 
-  // ✨ [핵심 수정] useEffect로 변경 (화면 진입 시 1회만 실행)
-  // params.postId(수정할 글 ID)나 params.t(새 글 타임스탬프)가 바뀔 때만 실행됨
+  // 초기화 및 데이터 채우기
   useEffect(() => {
     if (params.postId) {
-      // ✏️ 수정 모드: 데이터 채워넣기
+      // 수정 모드
       setClubName(params.initialClubName as string || '');
       setDescription(params.initialDescription as string || '');
       setActivityField(params.initialActivityField as string || '학술');
@@ -65,13 +64,19 @@ export default function CreateClubScreen() {
           setMemberLimit(limit);
           setIsCustomLimit(true); 
       }
-      setImageUrl((params.initialImageUrl as string) || null);
+      // 기존 이미지 세팅
+      const initImg = params.initialImageUrl as string;
+      if (initImg && initImg.startsWith('http')) {
+          setImageUrl(initImg);
+      } else {
+          setImageUrl(null);
+      }
 
     } else {
-      // ➕ 새 글 모드: 폼 초기화
+      // 새 글 모드
       resetForm();
     }
-  }, [params.postId, params.t]); // 의존성 배열 중요!
+  }, [params.postId, params.t]);
 
   const resetForm = () => {
     setClubName('');
@@ -94,14 +99,16 @@ export default function CreateClubScreen() {
     });
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      // ✨ 여기서 state를 바꿔도 useEffect가 다시 돌지 않으므로 초기화되지 않음!
       setImageUrl(result.assets[0].uri);
     }
   };
 
   const uploadImage = async (uri: string): Promise<string | null> => {
     if (!currentUser) return null; 
-    if (uri.startsWith('http')) return uri; // 이미 업로드된 이미지면 그대로 사용
+    
+    if (uri.startsWith('http') || uri.startsWith('https')) {
+        return uri;
+    }
 
     setUploadingImage(true);
     try {
@@ -150,12 +157,12 @@ export default function CreateClubScreen() {
     }
 
     setCreatingPost(true);
-    let uploadedImageUrl: string | null = null;
     
-    if (imageUrl) {
-      uploadedImageUrl = await uploadImage(imageUrl);
-      // 이미지가 있었는데 업로드가 실패했고, 기존 URL도 아니라면 에러 처리
-      if (imageUrl && !uploadedImageUrl) { 
+    let finalImageUrl: string | null = imageUrl; 
+
+    if (imageUrl && !imageUrl.startsWith('http')) {
+      finalImageUrl = await uploadImage(imageUrl);
+      if (!finalImageUrl) { 
           setCreatingPost(false); 
           Alert.alert("오류", "이미지 업로드에 실패했습니다."); 
           return; 
@@ -163,22 +170,19 @@ export default function CreateClubScreen() {
     }
 
     try {
-      // params.postId가 배열일 수 있으므로 안전하게 처리
       const targetPostId = Array.isArray(params.postId) ? params.postId[0] : params.postId;
 
       if (targetPostId) {
-        // ✏️ [수정] 기존 문서 업데이트
         const postRef = doc(db, 'clubPosts', targetPostId);
         await updateDoc(postRef, {
             clubName: clubName.trim(),
             description: description.trim(),
             activityField,
             memberLimit: limitNumber,
-            imageUrl: uploadedImageUrl || null, 
+            imageUrl: finalImageUrl, 
         });
         Alert.alert("수정 완료", "게시글이 수정되었습니다.");
       } else {
-        // ➕ [생성] 새 문서 추가
         await addDoc(collection(db, 'clubPosts'), {
             clubName: clubName.trim(),
             description: description.trim(),
@@ -187,16 +191,21 @@ export default function CreateClubScreen() {
             currentMembers: [currentUser.uid],
             creatorId: currentUser.uid,
             createdAt: serverTimestamp(),
-            imageUrl: uploadedImageUrl,
+            imageUrl: finalImageUrl,
         });
         Alert.alert("등록 완료", "모집글이 등록되었습니다.");
       }
       
       router.replace('/(tabs)/clublist');
 
-    } catch (error) {
-      console.error("Error saving club post:", error);
-      Alert.alert("실패", "저장 중 오류가 발생했습니다.");
+    } catch (error: any) {
+      if (error.code === 'permission-denied' || error.message.includes('permission-denied')) {
+        console.log("Club post blocked due to reports.");
+        Alert.alert("이용 제한 🚫", "신고 누적(5회 이상)으로 인해 게시글 작성이 제한되었습니다.\n관리자에게 문의해주세요.");
+      } else {
+        console.error("Error saving club post:", error);
+        Alert.alert("실패", "저장 중 오류가 발생했습니다.");
+      }
     } finally {
       setCreatingPost(false);
     }
@@ -306,6 +315,7 @@ export default function CreateClubScreen() {
             </>
           )}
         </TouchableOpacity>
+        
         {imageUrl && !uploadingImage && (
           <TouchableOpacity onPress={() => setImageUrl(null)} style={styles.removeImageButton}>
             <Text style={styles.removeImageButtonText}>이미지 삭제</Text>

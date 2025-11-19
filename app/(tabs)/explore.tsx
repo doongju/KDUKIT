@@ -13,6 +13,9 @@ import {
 
 
 
+
+
+
   ScrollView,
   StyleSheet,
   Text,
@@ -70,6 +73,8 @@ const ExploreScreen: React.FC = () => {
         router.push('/(tabs)/clublist');
         break;
       case "중고 마켓":
+        router.push('/(tabs)/marketlist');
+        break;
       case "셔틀버스":
       case "분실물 센터":
       default:

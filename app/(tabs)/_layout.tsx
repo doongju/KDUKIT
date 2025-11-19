@@ -88,6 +88,22 @@ export default function TabLayout() {
           headerShown: false,
         }}
       />
+            <Tabs.Screen
+        name="create-market" 
+        options={{
+          title: '마켓 만들기',
+          href: null, // 탭 바에 노출되지 않도록 설정
+          headerShown: false,
+        }}
+      />
+            <Tabs.Screen
+        name="marketlist" 
+        options={{
+          title: '마켓 목록',
+          href: null, // 탭 바에 노출되지 않도록 설정
+          headerShown: false,
+        }}
+      />
 
       <Tabs.Screen
         name="profile"
