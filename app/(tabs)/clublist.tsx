@@ -626,7 +626,7 @@ const styles = StyleSheet.create({
   memberStatusText: { fontSize: 12, color: '#333' },
   description: { fontSize: 14, color: '#555', marginBottom: 5 },
   fab: {
-    position: 'absolute', bottom: Platform.OS === 'ios' ? 30 : 20, right: 20,
+    position: 'absolute', bottom: Platform.OS === 'ios' ? 90 : 20, right: 20,
     backgroundColor: '#0062ffff', borderRadius: 30, width: 120, height: 50,
     flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
