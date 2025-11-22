@@ -177,11 +177,8 @@ export default function SignupScreen() {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, fullEmail, password);
       const userId = userCredential.user.uid;
-<<<<<<< HEAD
 
       // ✨ [수정] nickname 필드 추가 저장 + trustScore 초기화
-=======
->>>>>>> 23ff5c319ab4cf41181178dee1b07c5352aaace4
       await setDoc(doc(db, "users", userId), {
         name: name.trim(),
         nickname: nickname.trim(), // 닉네임 저장
@@ -279,7 +276,6 @@ export default function SignupScreen() {
           autoCapitalize="words"
         />
 
-<<<<<<< HEAD
         {/* ✨ [추가] 닉네임 입력 필드 */}
         <TextInput
           placeholder="닉네임 (2~10자)"
@@ -294,8 +290,6 @@ export default function SignupScreen() {
         <View style={styles.inputLabelContainer}>
             <Text style={styles.inputLabel}>학과</Text>
         </View>
-=======
->>>>>>> 23ff5c319ab4cf41181178dee1b07c5352aaace4
         {renderDepartmentPicker()}
 
         <View style={styles.emailGroup}>

@@ -7,13 +7,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 export default function RootLayout() {
   return (
-<<<<<<< HEAD
     // SafeAreaProvider로 감싸주면 앱 전반적으로 안전 영역 계산이 정확해집니다.
     <SafeAreaProvider>
       
       {/* ✨ 핵심: 여기서 style="dark"를 주면 모든 화면에서 시간/배터리가 검은색이 됩니다. */}
       <StatusBar style="dark" />
-=======
     <Stack>
       {user ? (
         // 사용자가 로그인되어 있으면 (tabs) 그룹을 보여줌
@@ -30,7 +28,6 @@ export default function RootLayout() {
     </Stack>
   );
 }
->>>>>>> 2335455a5318c21a390df4adf050b1335f980c75
 
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
