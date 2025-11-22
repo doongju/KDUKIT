@@ -421,7 +421,6 @@ const styles = StyleSheet.create({
   memberStatusFull: { backgroundColor: '#ffcdd2' },
   memberStatusText: { fontSize: 12, color: '#333' },
   description: { fontSize: 14, color: '#555', marginBottom: 5 },
-<<<<<<< HEAD
   fab: {
     position: 'absolute', bottom: Platform.OS === 'ios' ? 90 : 70, right: 20,
     backgroundColor: '#0062ffff', borderRadius: 30, width: 120, height: 50,
@@ -429,10 +428,8 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5,
   },
-=======
   // ✨ [수정] iOS 탭바 가림 방지 (bottom: 110)
   fab: { position: 'absolute', bottom: Platform.OS === 'ios' ? 90 : 20, right: 20, backgroundColor: '#0062ffff', borderRadius: 30, width: 120, height: 50, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5, zIndex: 9999 },
->>>>>>> 23ff5c319ab4cf41181178dee1b07c5352aaace4
   fabText: { color: 'white', fontSize: 18, fontWeight: 'bold', marginLeft: 5 },
   emptyListContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 50 },
   emptyListText: { fontSize: 16, color: '#666', marginTop: 10 },

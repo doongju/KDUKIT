@@ -6,14 +6,11 @@ import { getAuth } from "firebase/auth";
 import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
-<<<<<<< HEAD
   Alert,
-=======
   ActivityIndicator,
   Alert,
   Image,
   RefreshControl,
->>>>>>> 23ff5c319ab4cf41181178dee1b07c5352aaace4
   ScrollView,
   StyleSheet,
   Text,
@@ -65,7 +62,6 @@ const ExploreScreen: React.FC = () => {
   const auth = getAuth();
   const user = auth.currentUser;
 
-<<<<<<< HEAD
   // ⚠️ 기능 카드 클릭 핸들러 (중복 제거 및 정리 완료)
   const handleFeaturePress = (featureName: string) => {
     switch (featureName) {
@@ -91,7 +87,6 @@ const ExploreScreen: React.FC = () => {
       default:
         // 나머지 미구현 기능에 대한 알림
         Alert.alert("준비 중", `${featureName} 기능은 현재 개발 중입니다. 잠시만 기다려 주세요!`);
-=======
   // --- 상태 관리 ---
   const [todayClasses, setTodayClasses] = useState<TimetableItem[]>([]);
   const [onlineClasses, setOnlineClasses] = useState<TimetableItem[]>([]);
@@ -206,7 +201,6 @@ const ExploreScreen: React.FC = () => {
       case "중고 마켓": router.push('/(tabs)/marketlist'); break;
       case "셔틀버스": 
         Alert.alert("준비 중", "셔틀버스 시간표 기능은 곧 업데이트됩니다! 🚌"); 
->>>>>>> 23ff5c319ab4cf41181178dee1b07c5352aaace4
         break;
       default: Alert.alert("준비 중", "곧 오픈될 예정입니다!"); break;
     }
@@ -261,7 +255,6 @@ const ExploreScreen: React.FC = () => {
           </View>
         )}
 
-<<<<<<< HEAD
         {/* 주요 기능 그리드 */}
         <View style={styles.featuresGrid}>
           {Object.entries(featureIcons).map(([feature, icon]) => (
@@ -273,7 +266,6 @@ const ExploreScreen: React.FC = () => {
               <View style={styles.featureCardContent}>
                 <Text style={styles.featureIcon}>{icon}</Text>
                 <Text style={styles.featureText}>{feature}</Text>
-=======
         {/* 온라인 강의 표시 */}
         {onlineClasses.length > 0 && (
           <View style={{marginTop: 10}}>
@@ -297,7 +289,6 @@ const ExploreScreen: React.FC = () => {
             <TouchableOpacity key={idx} style={styles.gridItem} onPress={() => handleFeaturePress(item.name)}>
               <View style={[styles.iconCircle, { backgroundColor: item.color + '20' }]}>
                 <Ionicons name={item.icon as any} size={24} color={item.color} />
->>>>>>> 23ff5c319ab4cf41181178dee1b07c5352aaace4
               </View>
               <Text style={styles.gridText}>{item.name}</Text>
             </TouchableOpacity>
@@ -387,7 +378,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingBottom: 15, backgroundColor: '#fff',
     borderBottomWidth: 1, borderBottomColor: '#eee'
   },
-<<<<<<< HEAD
   scrollContent: {
     padding: 16,
   },
@@ -400,7 +390,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-=======
   logoText: { fontSize: 22, fontWeight: '900', color: '#0062ffff' },
   scrollContent: { padding: 20 },
   
@@ -421,7 +410,6 @@ const styles = StyleSheet.create({
   onlineItem: { 
     padding: 12, backgroundColor: '#e8f0fe', borderRadius: 8, marginBottom: 6, 
     borderLeftWidth: 4, borderLeftColor: '#8ab4f8'
->>>>>>> 23ff5c319ab4cf41181178dee1b07c5352aaace4
   },
   onlineText: { fontSize: 14, color: '#333' },
 
@@ -445,7 +433,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 15, borderRadius: 12, marginBottom: 10,
     shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, elevation: 2
   },
-<<<<<<< HEAD
   timetableText: {
     fontSize: 15,
     fontWeight: "bold",
@@ -534,7 +521,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textAlign: "center",
   },
-=======
   taxiIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' },
   taxiRoute: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 4 },
   taxiTime: { fontSize: 13, color: '#666' },
@@ -543,5 +529,4 @@ const styles = StyleSheet.create({
 
   emptyCard: { padding: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0', borderRadius: 12 },
   emptyText: { color: '#999', fontSize: 14 },
->>>>>>> 23ff5c319ab4cf41181178dee1b07c5352aaace4
 });

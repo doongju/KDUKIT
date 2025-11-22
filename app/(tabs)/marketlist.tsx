@@ -509,13 +509,10 @@ const styles = StyleSheet.create({
   status: { fontSize: 12, fontWeight: 'bold' }, 
   profileLink: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: '#f0f0f0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
   profileLinkText: { fontSize: 11, color: '#555', marginLeft: 4 },
-<<<<<<< HEAD
   fab: { position: 'absolute', bottom: 90, right: 20, backgroundColor: '#0062ffff', borderRadius: 30, flexDirection: 'row', alignItems: 'center', padding: 15, elevation: 5 },
   fabText: { color: '#fff', fontWeight: 'bold', marginLeft: 5 },
-=======
   fab: { position: 'absolute', bottom: Platform.OS === 'ios' ? 110 : 80, right: 20, backgroundColor: '#0062ffff', borderRadius: 30, flexDirection: 'row', alignItems: 'center', padding: 15, elevation: 5, zIndex: 9999, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84 },
   fabText: { color: '#fff', fontWeight: 'bold', marginLeft: 5, fontSize: 16 },
->>>>>>> 23ff5c319ab4cf41181178dee1b07c5352aaace4
   modalContainer: { flex: 1, backgroundColor: '#fff' },
   modalHeader: { padding: 15, alignItems: 'flex-end' },
   modalImage: { width: '100%', height: 300, resizeMode: 'cover', borderRadius: 10 },
