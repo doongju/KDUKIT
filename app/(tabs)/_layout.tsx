@@ -72,6 +72,38 @@ export default function TabLayout() {
           headerShown: false, // create-party.tsx에서 커스텀 헤더를 사용하기 위해 숨김
         }}
       />
+      <Tabs.Screen
+        name="clublist" 
+        options={{
+          title: '동아리 모집',
+          href: null, // 탭 바에 노출되지 않도록 설정
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name="create-club" 
+        options={{
+          title: '클럽 만들기',
+          href: null, // 탭 바에 노출되지 않도록 설정
+          headerShown: false,
+        }}
+      />
+            <Tabs.Screen
+        name="create-market" 
+        options={{
+          title: '마켓 만들기',
+          href: null, // 탭 바에 노출되지 않도록 설정
+          headerShown: false,
+        }}
+      />
+            <Tabs.Screen
+        name="marketlist" 
+        options={{
+          title: '마켓 목록',
+          href: null, // 탭 바에 노출되지 않도록 설정
+          headerShown: false,
+        }}
+      />
 
       <Tabs.Screen
         name="profile"
