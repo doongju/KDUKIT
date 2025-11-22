@@ -1,8 +1,8 @@
 // components/UserProfileModal.tsx
 
 import { Ionicons } from '@expo/vector-icons';
-import { getAuth } from 'firebase/auth'; // ✨ [추가] 현재 사용자 UID 가져오기
-import { arrayRemove, arrayUnion, doc, onSnapshot, updateDoc } from 'firebase/firestore'; // ✨ [수정] onSnapshot 추가
+import { getAuth } from 'firebase/auth';
+import { arrayRemove, arrayUnion, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -22,14 +22,16 @@ interface UserProfileModalProps {
   onClose: () => void;
 }
 
+// ✨ UserData 인터페이스에 nickname 추가
 interface UserData {
   department?: string; 
   email?: string;
   name?: string;       
   trustScore?: number; 
   reportCount?: number;
-  blockedUsers?: string[]; // ✨ [추가] 차단 목록 필드
-  wishlist?: string[]; // ✨ [추가] 찜 목록 필드 (이 모달에서는 사용 안하지만 타입은 미리 정의)
+  blockedUsers?: string[]; 
+  wishlist?: string[]; 
+  nickname?: string; // ✨ 닉네임 필드 추가
 }
 
 export default function UserProfileModal({ visible, userId, onClose }: UserProfileModalProps) {
@@ -37,12 +39,10 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
   const [loading, setLoading] = useState(true);
   const [reportVisible, setReportVisible] = useState(false);
   
-  // ✨ [추가] 현재 사용자의 차단 목록을 실시간으로 가져오기
   const [myBlockedUsers, setMyBlockedUsers] = useState<string[]>([]);
   const auth = getAuth();
   const currentUserId = auth.currentUser?.uid;
 
-  // ✨ [수정] useEffect: 상대방 데이터와 내 차단 목록을 동시에 리스너로 가져옴
   useEffect(() => {
     if (!visible || !userId || !currentUserId) {
       setUserData(null);
@@ -81,7 +81,6 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
       setMyBlockedUsers([]);
     });
 
-    // 컴포넌트 언마운트 시 구독 해제
     return () => {
       unsubscribeUser();
       unsubscribeMyBlocked();
@@ -89,7 +88,7 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
   }, [visible, userId, currentUserId]);
 
 
-  // ✨ [추가] 사용자 차단/차단 해제 핸들러
+  // 차단/해제 로직
   const handleToggleBlock = async () => {
     if (!currentUserId || !userId) return;
 
@@ -98,13 +97,11 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
 
     try {
       if (isBlocked) {
-        // 차단 해제
         await updateDoc(myDocRef, {
           blockedUsers: arrayRemove(userId)
         });
         Alert.alert("차단 해제", `${displayName}님에 대한 차단이 해제되었습니다.`);
       } else {
-        // 차단
         await updateDoc(myDocRef, {
           blockedUsers: arrayUnion(userId)
         });
@@ -117,7 +114,7 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
   };
 
 
-  // 점수 로직
+  // 점수 및 레벨 로직
   const getScoreInfo = (score: number) => {
     if (score >= 90) return { color: '#FFD700', icon: 'trophy', label: '명예 학우 👑' };
     if (score >= 70) return { color: '#0062ffff', icon: 'medal', label: '우수 학우 😎' };
@@ -130,33 +127,26 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
   const { color, icon, label } = getScoreInfo(score);
   const barWidth = Math.min(Math.max(score, 0), 100) + '%'; 
   
-  // 신고 누적 횟수 체크
   const reportCount = userData?.reportCount ?? 0;
   const isWarningUser = reportCount >= 3; 
 
-  let displayName = "알 수 없음"; // 모달 제목으로 사용할 이름
-  
-  if (userData?.department) {
-      if (userData.email) {
-          const prefix = userData.email.split('@')[0]; 
-          const two = prefix.substring(0, 2); 
+  // ✨ [핵심 수정] 표시 이름 생성 로직: "이메일ID 앞 2글자님 학과 닉네임"
+let displayName = "알 수 없음";
 
-          if (!isNaN(Number(two)) && two.length === 2) {
-             displayName = `${two}학번 ${userData.department}`;
-          } 
-          else {
-             displayName = `${prefix}님 ${userData.department}`;
-          }
-      } else {
-          displayName = userData.department;
-      }
-  } else if (userData?.email) {
-      displayName = userData.email.split('@')[0];
-  } else if (userData?.name) {
-      displayName = userData.name;
-  }
+if (userData) {
+    let emailPrefix = "";
+    if (userData.email) {
+        const fullId = userData.email.split('@')[0];   // 전체 ID
+        emailPrefix = fullId.substring(0, 2);          // 앞 2글자만 사용
+    }
 
-  // 나 자신은 차단할 수 없도록
+    const dept = userData.department || "학과 미정";
+    const nick = userData.nickname || (userData.name ? userData.name : "");
+
+    // 최종 조합: "bl님 군사학과 개구리"
+    displayName = `${emailPrefix}님 ${dept} ${nick}`;
+}
+
   const canBlock = userId && currentUserId && userId !== currentUserId;
   const isBlocked = canBlock && myBlockedUsers.includes(userId);
 
@@ -178,6 +168,7 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
                 <Ionicons name="person-circle" size={80} color={isWarningUser ? "#ff3b30" : "#ccc"} />
               </View>
 
+              {/* ✨ 조합된 이름 표시 */}
               <Text style={styles.userName}>{displayName}</Text>
               
               <View style={styles.verifiedContainer}>
@@ -213,7 +204,6 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
                 </Text>
               </View>
               
-              {/* ✨ [추가] 차단/차단 해제 버튼 */}
               {canBlock && (
                 <TouchableOpacity 
                     style={[styles.blockButton, isBlocked ? styles.unblockButton : {}]} 
@@ -251,7 +241,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   modalContainer: {
-    width: '80%', backgroundColor: '#fff', borderRadius: 20,
+    width: '85%', // ✨ 폭을 살짝 넓혀서 긴 이름도 잘 보이게 함
+    backgroundColor: '#fff', borderRadius: 20,
     padding: 20, alignItems: 'center', elevation: 5,
   },
   closeIcon: {
@@ -261,7 +252,9 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   userName: {
-    fontSize: 20, fontWeight: 'bold', color: '#333', marginBottom: 4,
+    fontSize: 20, fontWeight: 'bold', color: '#333', marginBottom: 4, 
+    textAlign: 'center', // ✨ 긴 이름 중앙 정렬
+    paddingHorizontal: 5, 
   },
   
   verifiedContainer: {
@@ -312,13 +305,12 @@ const styles = StyleSheet.create({
     fontSize: 11, color: '#aaa', marginTop: 5, textAlign: 'center'
   },
 
-  // ✨ [추가] 차단 버튼 스타일
   blockButton: {
     marginTop: 10,
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 20,
-    backgroundColor: '#ff3b30', // 빨간색
+    backgroundColor: '#ff3b30', 
   },
   blockButtonText: {
     color: 'white',
@@ -326,7 +318,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   unblockButton: {
-    backgroundColor: '#888', // 회색
+    backgroundColor: '#888', 
   },
   unblockButtonText: {
     color: 'white',

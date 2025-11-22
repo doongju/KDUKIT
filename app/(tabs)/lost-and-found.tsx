@@ -4,10 +4,13 @@ import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
+    BackHandler, // ✨ 뒤로가기 핸들링 추가
     FlatList,
-    ScrollView, // ScrollView 추가
+    RefreshControl,
+    ScrollView,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View
 } from 'react-native';
@@ -28,9 +31,29 @@ export default function LostAndFoundScreen() {
     const router = useRouter();
     const [items, setItems] = useState<LostItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    
     const [filter, setFilter] = useState<'all' | 'lost' | 'found'>('all');
+    
+    // ✨ 검색 관련 상태
+    const [isSearching, setIsSearching] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
 
-    // Firestore에서 실시간 데이터 가져오기
+    // ✨ 뒤로가기 키 핸들링 (검색 모드일 때 검색 닫기)
+    useEffect(() => {
+        const backAction = () => {
+            if (isSearching) {
+                setIsSearching(false);
+                setSearchQuery('');
+                return true; // 앱 종료 방지
+            }
+            return false;
+        };
+        const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+        return () => backHandler.remove();
+    }, [isSearching]);
+
+    // Firestore 데이터 가져오기
     useEffect(() => {
         const q = query(collection(db, "lostAndFoundItems"), orderBy("createdAt", "desc"));
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -40,12 +63,26 @@ export default function LostAndFoundScreen() {
             })) as LostItem[];
             setItems(loadedItems);
             setLoading(false);
+            setRefreshing(false);
         });
         return () => unsubscribe();
     }, []);
 
-    // 필터링된 리스트
-    const filteredItems = items.filter(item => filter === 'all' || item.type === filter);
+    // 필터링 로직
+    const filteredItems = items.filter(item => {
+        const matchesType = filter === 'all' || item.type === filter;
+        const query = searchQuery.toLowerCase();
+        const matchesSearch = 
+            item.itemName.toLowerCase().includes(query) || 
+            item.location.toLowerCase().includes(query);
+
+        return matchesType && matchesSearch;
+    });
+
+    const onRefresh = () => {
+        setRefreshing(true);
+        setTimeout(() => setRefreshing(false), 1000);
+    };
 
     const renderItem = ({ item }: { item: LostItem }) => (
         <TouchableOpacity 
@@ -68,8 +105,8 @@ export default function LostAndFoundScreen() {
                         {item.createdAt?.toDate ? item.createdAt.toDate().toLocaleDateString() : ''}
                     </Text>
                 </View>
-                <Text style={styles.itemName}>{item.itemName}</Text>
-                <Text style={styles.locationText}>{item.location}</Text>
+                <Text style={styles.itemName} numberOfLines={1}>{item.itemName}</Text>
+                <Text style={styles.locationText} numberOfLines={1}>{item.location}</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#ccc" />
         </TouchableOpacity>
@@ -77,19 +114,51 @@ export default function LostAndFoundScreen() {
 
     return (
         <View style={[styles.container, { paddingTop: insets.top }]}>
-            {/* 헤더 */}
+            
+            {/* ✨ 헤더 영역 (검색 모드에 따라 변경) */}
             <View style={styles.headerBar}>
-                <Text style={styles.headerTitle}>분실물 센터</Text>
+                {isSearching ? (
+                    // 검색 모드일 때
+                    <View style={styles.searchBarContainer}>
+                        <TouchableOpacity onPress={() => { setIsSearching(false); setSearchQuery(''); }}>
+                            <Ionicons name="arrow-back" size={24} color="#333" />
+                        </TouchableOpacity>
+                        <TextInput 
+                            style={styles.searchInput}
+                            placeholder="물건 이름, 장소 검색"
+                            placeholderTextColor="#999"
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            autoFocus
+                            returnKeyType="search"
+                        />
+                        {searchQuery.length > 0 && (
+                            <TouchableOpacity onPress={() => setSearchQuery('')}>
+                                <Ionicons name="close-circle" size={20} color="#ccc" />
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                ) : (
+                    // 일반 모드일 때 (타이틀 + 돋보기)
+                    <View style={styles.defaultHeaderContainer}>
+                        <Text style={styles.headerTitle}>분실물 센터</Text>
+                        <TouchableOpacity 
+                            onPress={() => setIsSearching(true)} 
+                            style={styles.searchIconBtn}
+                        >
+                            <Ionicons name="search-outline" size={26} color="#333" />
+                        </TouchableOpacity>
+                    </View>
+                )}
             </View>
 
-            {/* ✨ 상단 컨트롤 바 (가로 스크롤) */}
+            {/* 상단 필터 및 버튼 (검색 중이 아닐 때만 보이게 할 수도 있지만, 보통은 유지함) */}
             <View style={styles.controlContainer}>
                 <ScrollView 
                     horizontal 
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.scrollContentContainer}
                 >
-                    {/* 1. 필터 버튼들 */}
                     {['all', 'lost', 'found'].map((f) => (
                         <TouchableOpacity
                             key={f}
@@ -102,10 +171,8 @@ export default function LostAndFoundScreen() {
                         </TouchableOpacity>
                     ))}
 
-                    {/* 구분선 */}
                     <View style={styles.verticalDivider} />
 
-                    {/* 2. 등록 버튼들 (액션) */}
                     <TouchableOpacity 
                         style={[styles.actionButton, styles.actionLost]}
                         onPress={() => router.push('/(tabs)/create-lost-item?type=lost')}
@@ -133,9 +200,19 @@ export default function LostAndFoundScreen() {
                     renderItem={renderItem}
                     keyExtractor={item => item.id}
                     contentContainerStyle={styles.listContent}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                    }
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
-                            <Text style={styles.emptyText}>등록된 물건이 없습니다.</Text>
+                            {searchQuery ? (
+                                <>
+                                    <Ionicons name="search-outline" size={50} color="#ddd" />
+                                    <Text style={styles.emptyText}>검색 결과가 없습니다.</Text>
+                                </>
+                            ) : (
+                                <Text style={styles.emptyText}>등록된 물건이 없습니다.</Text>
+                            )}
                         </View>
                     }
                 />
@@ -145,16 +222,51 @@ export default function LostAndFoundScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f5f5f5' },
-    headerBar: {
-        paddingHorizontal: 20, paddingBottom: 15, backgroundColor: '#fff',
-        borderBottomWidth: 1, borderBottomColor: '#eee',
-    },
-    headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#333' },
+    container: { flex: 1, backgroundColor: '#fff' }, // 배경 흰색으로 변경 (헤더와 통일감)
     
-    // ✨ 상단 컨트롤 영역 스타일
+    // ✨ 헤더 스타일 수정
+    headerBar: {
+        height: 60,
+        justifyContent: 'center',
+        paddingHorizontal: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f0f0',
+        backgroundColor: '#fff',
+    },
+    defaultHeaderContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    headerTitle: { 
+        fontSize: 24, 
+        fontWeight: 'bold', 
+        color: '#333' 
+    },
+    searchIconBtn: {
+        padding: 5,
+    },
+
+    // ✨ 검색창 스타일
+    searchBarContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f2f3f7',
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        height: 40,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 16,
+        color: '#333',
+        marginLeft: 10,
+        paddingVertical: 0, // 안드로이드 텍스트 정렬 보정
+    },
+
+    // 컨트롤 영역 (필터 등)
     controlContainer: {
-        backgroundColor: '#fff', // 배경색을 넣어 깔끔하게
+        backgroundColor: '#fff', 
         paddingVertical: 12,
         borderBottomWidth: 1,
         borderBottomColor: '#f0f0f0',
@@ -162,10 +274,9 @@ const styles = StyleSheet.create({
     scrollContentContainer: {
         paddingHorizontal: 20,
         alignItems: 'center',
-        gap: 8, // 버튼 사이 간격
+        gap: 8, 
     },
     
-    // 필터 버튼 스타일
     filterButton: {
         paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20,
         backgroundColor: '#f0f0f0', borderWidth: 1, borderColor: '#eee',
@@ -174,12 +285,10 @@ const styles = StyleSheet.create({
     filterText: { color: '#666', fontWeight: '600', fontSize: 14 },
     filterTextActive: { color: '#fff' },
 
-    // 구분선 스타일
     verticalDivider: {
         width: 1, height: 20, backgroundColor: '#ddd', marginHorizontal: 5,
     },
 
-    // 액션(등록) 버튼 스타일
     actionButton: {
         flexDirection: 'row', alignItems: 'center',
         paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20,
@@ -189,8 +298,7 @@ const styles = StyleSheet.create({
     actionFound: { backgroundColor: '#4d96ff' },
     actionText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
 
-    // 리스트 스타일
-    listContent: { padding: 20, paddingBottom: 50 },
+    listContent: { padding: 20, paddingBottom: 50, backgroundColor: '#f5f5f5' }, // 리스트 배경은 회색 유지
     itemCard: {
         flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
         borderRadius: 12, padding: 15, marginBottom: 12,
@@ -209,5 +317,5 @@ const styles = StyleSheet.create({
     itemName: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 2 },
     locationText: { fontSize: 14, color: '#666' },
     emptyContainer: { alignItems: 'center', marginTop: 50 },
-    emptyText: { color: '#999', fontSize: 16 },
+    emptyText: { color: '#999', fontSize: 16, marginTop: 10 },
 });

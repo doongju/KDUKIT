@@ -1,17 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { deleteDoc, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; // ✅ setDoc, serverTimestamp 추가
-import { getAuth } from 'firebase/auth'; 
+import { getAuth } from 'firebase/auth';
+import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'; // ✅ setDoc, serverTimestamp 추가
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Image,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
-    View,
-    Image 
+    View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';

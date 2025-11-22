@@ -52,6 +52,9 @@ export default function SignupScreen() {
   const [password, setPassword] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [name, setName] = useState("");
+  
+  // ✨ [추가] 닉네임 상태
+  const [nickname, setNickname] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
@@ -82,6 +85,13 @@ export default function SignupScreen() {
         Alert.alert("오류", "이름은 한글만 입력 가능하며 공백이 아니어야 합니다.");
         return false;
     }
+
+    // ✨ [추가] 닉네임 유효성 검사 (2~10자)
+    if (nickname.trim().length < 2 || nickname.trim().length > 10) {
+        Alert.alert("오류", "닉네임은 2자 이상 10자 이하로 입력해주세요.");
+        return false;
+    }
+
     if (selectedDepartment === DEPARTMENTS[0]) {
         Alert.alert("오류", "학과를 선택해주세요.");
         return false;
@@ -144,11 +154,14 @@ export default function SignupScreen() {
       const userCredential = await createUserWithEmailAndPassword(auth, fullEmail, password);
       const userId = userCredential.user.uid;
 
+      // ✨ [수정] nickname 필드 추가 저장 + trustScore 초기화
       await setDoc(doc(db, "users", userId), {
         name: name.trim(),
+        nickname: nickname.trim(), // 닉네임 저장
         department: selectedDepartment,
         email: fullEmail,
         createdAt: new Date().toISOString(),
+        trustScore: 50, // 초기 신뢰도 50점
       });
 
       Alert.alert("회원가입 성공", "가입이 완료되었습니다!");
@@ -198,6 +211,16 @@ export default function SignupScreen() {
           onChangeText={setName}
           style={styles.input}
           autoCapitalize="words"
+        />
+
+        {/* ✨ [추가] 닉네임 입력 필드 */}
+        <TextInput
+          placeholder="닉네임 (2~10자)"
+          placeholderTextColor="#A9A9A9"
+          value={nickname}
+          onChangeText={setNickname}
+          style={styles.input}
+          autoCapitalize="none"
         />
 
         {/* 학과 드롭다운 */}

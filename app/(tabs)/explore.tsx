@@ -1,22 +1,7 @@
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-  Alert // Alert 추가: 존재하지 않는 기능에 대한 사용자 피드백
-  ,
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -63,31 +48,28 @@ const ExploreScreen: React.FC = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  // ⚠️ 기능 카드 클릭 핸들러: '분실물 센터' 경로 추가
+  // ⚠️ 기능 카드 클릭 핸들러 (중복 제거 및 정리 완료)
   const handleFeaturePress = (featureName: string) => {
     switch (featureName) {
       case "택시 파티":
         // 새로운 taxiparty.tsx 경로로 이동
         router.push('/(tabs)/taxiparty');
         break;
+
       case "동아리 모집":
         router.push('/(tabs)/clublist');
         break;
+
       case "중고 마켓":
         router.push('/(tabs)/marketlist');
         break;
-      case "셔틀버스":
-      case "분실물 센터":
       
-      // 👇 [수정됨] '분실물 센터' 케이스를 추가하고 '준비 중' 알림 대신 라우터 이동을 실행합니다.
       case "분실물 센터":
-        router.push('/(tabs)/lost-and-found'); // '/(tabs)/lost-and-found.tsx' 파일로 이동
+        // 분실물 센터 페이지로 이동
+        router.push('/(tabs)/lost-and-found');
         break;
 
-      case "중고 마켓":
-      case "셔틀버스":
-      case "동아리 모집":
-      // case "분실물 센터": // 👈 default 케이스에서 제거
+      case "셔틀버스": 
       default:
         // 나머지 미구현 기능에 대한 알림
         Alert.alert("준비 중", `${featureName} 기능은 현재 개발 중입니다. 잠시만 기다려 주세요!`);
@@ -133,7 +115,6 @@ const ExploreScreen: React.FC = () => {
         {/* 주요 기능 그리드 */}
         <View style={styles.featuresGrid}>
           {Object.entries(featureIcons).map(([feature, icon]) => (
-            // ⚠️ onPress 이벤트 핸들러 추가
             <TouchableOpacity 
               key={feature} 
               style={styles.featureCard}
@@ -172,11 +153,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f5f5f5",
   },
-  // ⚠️ scrollContent에서 상단 패딩 제거 (인셋이 처리)
   scrollContent: {
     padding: 16,
   },
-  // ⚠️ 로그아웃 버튼 관련 스타일 제거
   card: {
     marginBottom: 16,
     borderRadius: 12,
