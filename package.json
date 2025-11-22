@@ -20,7 +20,6 @@
     "@react-navigation/elements": "^2.6.5",
     "@react-navigation/native": "^7.1.6",
     "dayjs": "^1.11.19",
-    "expo": "^54.0.20",
     "expo": "~54.0.25",
     "expo-blur": "~15.0.7",
     "expo-checkbox": "~5.0.7",
