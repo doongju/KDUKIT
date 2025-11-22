@@ -42,6 +42,7 @@ export default function RootLayout() {
       <Stack.Screen name="chat" options={{ headerShown: false }} />
       {/* 404 페이지도 명시적으로 여기에 포함시키는 것이 좋습니다. */}
       <Stack.Screen name="+not-found" options={{ headerShown: false }} />
+      <Stack.Screen name="profile" options={{ headerShown: false }} />
     </Stack>
   );
 }

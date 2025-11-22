@@ -4,21 +4,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { arrayUnion, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useState } from 'react'; // ✨ memo, useCallback 추가
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
-// 모달 임포트
-import TaxiFinishModal from '../../components/TaxiFinishModal'; // ✨ 새로 만든 모달
+import TaxiFinishModal from '../../components/TaxiFinishModal';
 import UserProfileModal from '../../components/UserProfileModal';
 
 interface TaxiParty {
@@ -32,18 +31,75 @@ interface TaxiParty {
   createdAt: any; 
 }
 
+// ✨ [최적화] 리스트 아이템 컴포넌트 분리 & 메모이제이션
+const PartyItem = memo(({ item, user, onPressProfile, onJoin, onChat, onFinish, onDelete }: any) => {
+    const isCreator = user && user.uid === item.creatorId;
+    const isMember = user && item.currentMembers.includes(user.uid);
+    const isFull = item.currentMembers.length >= item.memberLimit;
+
+    return (
+      <View style={styles.partyItem}>
+        <View style={styles.partyHeader}>
+          <Text style={styles.partyTime}>{item.departureTime} 출발</Text>
+          <TouchableOpacity 
+            style={styles.partyMembers} 
+            onPress={() => onPressProfile(item.creatorId)}
+          >
+            <Ionicons name="person" size={16} color="#fff" />
+            <Text style={styles.partyMembersText}>
+                {item.currentMembers.length} / {item.memberLimit} (방장 확인)
+            </Text>
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.locationContainer}>
+          <Text style={styles.locationLabel}>출발</Text>
+          <Text style={styles.locationText}>{item.pickupLocation}</Text>
+        </View>
+        <View style={styles.locationContainer}>
+          <Text style={styles.locationLabel}>도착</Text>
+          <Text style={styles.locationText}>{item.dropoffLocation}</Text>
+        </View>
+
+        {isCreator ? (
+           <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.finishButton} onPress={() => onFinish(item)}>
+                  <Text style={styles.finishButtonText}>운행 완료 (출석체크)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteButton} onPress={() => onDelete(item.id, item.creatorId)}>
+                  <Ionicons name="trash-outline" size={20} color="#fff" />
+              </TouchableOpacity>
+           </View>
+        ) : isMember ? (
+          <TouchableOpacity style={styles.chatButton} onPress={() => onChat(item.id, item.pickupLocation, item.dropoffLocation)}>
+            <Text style={styles.chatButtonText}>채팅방으로 이동</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity 
+            style={[styles.joinButton, isFull && styles.disabledButton]} 
+            onPress={() => onJoin(item)}
+            disabled={isFull}
+          >
+            <Text style={styles.joinButtonText}>{isFull ? '모집 완료' : '참여하기'}</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+});
+
 export default function TaxiPartyScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const auth = getAuth();
   const user = auth.currentUser;
 
+  // ✨ [삭제] 디버깅용 useEffect 로그 제거함
+
   const [parties, setParties] = useState<TaxiParty[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // 모달 상태
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
-  const [finishParty, setFinishParty] = useState<TaxiParty | null>(null); // 운행 종료할 파티
+  const [finishParty, setFinishParty] = useState<TaxiParty | null>(null); 
 
   useEffect(() => {
     const q = query(collection(db, "taxiParties"), orderBy("createdAt", "desc"));
@@ -92,6 +148,9 @@ export default function TaxiPartyScreen() {
   };
 
   const navigateToPartyChat = async (partyId: string, pickupLocation: string, dropoffLocation: string) => {
+    // ✨ [로그 제거] 불필요한 console.log 제거
+    if (!user) return;
+
     const chatRoomId = `party-${partyId}`;
     const chatRoomRef = doc(db, "chatRooms", chatRoomId);
     try {
@@ -99,7 +158,7 @@ export default function TaxiPartyScreen() {
         if (!partySnap.exists()) return;
         
         const creatorId = partySnap.data().creatorId;
-        const initialMembers = Array.from(new Set([user!.uid, creatorId])); // 중복 제거
+        const initialMembers = Array.from(new Set([user.uid, creatorId]));
 
         await setDoc(chatRoomRef, {
             name: `${pickupLocation} → ${dropoffLocation}`,
@@ -114,63 +173,18 @@ export default function TaxiPartyScreen() {
     } catch (e) { console.error(e); }
   };
 
-  const renderPartyItem = ({ item }: { item: TaxiParty }) => {
-    const isCreator = user && user.uid === item.creatorId;
-    const isMember = user && item.currentMembers.includes(user.uid);
-    const isFull = item.currentMembers.length >= item.memberLimit;
-
-    return (
-      <View style={styles.partyItem}>
-        <View style={styles.partyHeader}>
-          <Text style={styles.partyTime}>{item.departureTime} 출발</Text>
-          {/* ✨ 아이콘 누르면 방장 프로필(신뢰도/신고) 확인 가능 */}
-          <TouchableOpacity 
-            style={styles.partyMembers} 
-            onPress={() => setProfileUserId(item.creatorId)}
-          >
-            <Ionicons name="person" size={16} color="#fff" />
-            <Text style={styles.partyMembersText}>
-                {item.currentMembers.length} / {item.memberLimit} (방장 확인)
-            </Text>
-          </TouchableOpacity>
-        </View>
-        
-        <View style={styles.locationContainer}>
-          <Text style={styles.locationLabel}>출발</Text>
-          <Text style={styles.locationText}>{item.pickupLocation}</Text>
-        </View>
-        <View style={styles.locationContainer}>
-          <Text style={styles.locationLabel}>도착</Text>
-          <Text style={styles.locationText}>{item.dropoffLocation}</Text>
-        </View>
-
-        {isCreator ? (
-           <View style={styles.buttonRow}>
-              {/* ✨ [추가] 운행 완료 버튼 */}
-              <TouchableOpacity style={styles.finishButton} onPress={() => setFinishParty(item)}>
-                  <Text style={styles.finishButtonText}>운행 완료 (출석체크)</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteParty(item.id, item.creatorId)}>
-                  <Ionicons name="trash-outline" size={20} color="#fff" />
-              </TouchableOpacity>
-           </View>
-        ) : isMember ? (
-          <TouchableOpacity style={styles.chatButton} onPress={() => navigateToPartyChat(item.id, item.pickupLocation, item.dropoffLocation)}>
-            <Text style={styles.chatButtonText}>채팅방으로 이동</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity 
-            style={[styles.joinButton, isFull && styles.disabledButton]} 
-            onPress={() => handleJoinParty(item)}
-            disabled={isFull}
-          >
-            <Text style={styles.joinButtonText}>{isFull ? '모집 완료' : '참여하기'}</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    );
-  };
+  // ✨ [최적화] 렌더 함수 메모이제이션
+  const renderPartyItem = useCallback(({ item }: { item: TaxiParty }) => (
+      <PartyItem 
+        item={item} 
+        user={user} 
+        onPressProfile={setProfileUserId}
+        onJoin={handleJoinParty}
+        onChat={navigateToPartyChat}
+        onFinish={setFinishParty}
+        onDelete={handleDeleteParty}
+      />
+  ), [user]); // user가 바뀔 때만 재생성
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -188,22 +202,24 @@ export default function TaxiPartyScreen() {
           keyExtractor={item => item.id}
           contentContainerStyle={styles.listContentContainer}
           ListEmptyComponent={<Text style={styles.emptyText}>진행 중인 파티가 없습니다.</Text>}
+          // ✨ [성능 옵션 추가]
+          initialNumToRender={5}
+          maxToRenderPerBatch={5}
+          windowSize={5}
         />
       )}
 
-      {/* 프로필 모달 */}
       <UserProfileModal 
         visible={!!profileUserId}
         userId={profileUserId}
         onClose={() => setProfileUserId(null)}
       />
 
-      {/* ✨ 운행 종료(출석 체크) 모달 */}
       {finishParty && (
         <TaxiFinishModal
             visible={!!finishParty}
             partyId={finishParty.id}
-            members={finishParty.currentMembers.filter(uid => uid !== user?.uid)} // 본인 제외 멤버 리스트
+            members={finishParty.currentMembers.filter(uid => uid !== user?.uid)}
             onClose={() => setFinishParty(null)}
             onComplete={() => setFinishParty(null)}
         />

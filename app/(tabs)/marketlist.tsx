@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import {
+  arrayRemove,
   arrayUnion,
   collection,
   deleteDoc,
@@ -36,12 +37,10 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { db } from '../../firebaseConfig';
 
 // 컴포넌트 임포트
+import ImageView from 'react-native-image-viewing';
 import BuyerReviewModal from '../../components/BuyerReviewModal';
 import ReviewModal from '../../components/ReviewModal';
 import UserProfileModal from '../../components/UserProfileModal';
-
-// ✨ [추가] 이미지 확대 라이브러리
-import ImageView from 'react-native-image-viewing';
 
 interface MarketPost {
   id: string;
@@ -51,7 +50,7 @@ interface MarketPost {
   price: number;
   status: '판매중' | '예약중' | '판매완료';
   creatorId: string;
-  imageUrl?: string; // 현재는 단일 이미지 (문자열)
+  imageUrl?: string;
   buyerId?: string;
   isBuyerReviewed?: boolean;
 }
@@ -77,13 +76,15 @@ export default function MarketListScreen() {
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
   const [pendingReviewPost, setPendingReviewPost] = useState<MarketPost | null>(null);
 
-  // ✨ [추가] 이미지 뷰어 상태
   const [isImageViewerVisible, setIsImageViewerVisible] = useState(false);
+
+  // ✨ [추가] 내 찜 목록 상태
+  const [myWishlist, setMyWishlist] = useState<string[]>([]);
 
   // 뒤로가기 핸들링
   useEffect(() => {
     const backAction = () => {
-      if (isImageViewerVisible) { setIsImageViewerVisible(false); return true; } // 이미지 뷰어 닫기
+      if (isImageViewerVisible) { setIsImageViewerVisible(false); return true; }
       if (pendingReviewPost) { setPendingReviewPost(null); return true; }
       if (reviewModalVisible) { setReviewModalVisible(false); return true; }
       if (profileUserId) { setProfileUserId(null); return true; }
@@ -95,7 +96,7 @@ export default function MarketListScreen() {
     return () => backHandler.remove();
   }, [isSearching, modalVisible, profileUserId, reviewModalVisible, pendingReviewPost, isImageViewerVisible]);
 
-  // 데이터 로드
+  // 1. 게시글 데이터 로드
   const fetchPosts = useCallback(() => {
     if (!currentUser) { setLoading(false); setPosts([]); return () => {}; }
     setLoading(true);
@@ -105,11 +106,12 @@ export default function MarketListScreen() {
     }
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as MarketPost[];
+      // 최신순 정렬 (ID 기준 역순)
+      data.sort((a, b) => (b.id > a.id ? 1 : -1));
       setPosts(data);
       setLoading(false);
       setRefreshing(false);
     }, (error) => {
-      console.error("Fetch error:", error);
       setLoading(false);
     });
     return unsubscribe;
@@ -117,7 +119,7 @@ export default function MarketListScreen() {
 
   useEffect(() => { const unsub = fetchPosts(); return () => unsub(); }, [fetchPosts]);
 
-  // 구매자 리뷰 대기 체크
+  // 2. 구매자 리뷰 대기 체크
   useEffect(() => {
     if (!currentUser) return;
     const q = query(
@@ -136,6 +138,39 @@ export default function MarketListScreen() {
     });
     return () => unsubscribe();
   }, [currentUser]);
+
+  // ✨ [추가] 3. 내 찜 목록 실시간 감지
+  useEffect(() => {
+    if (!currentUser) return;
+    const userRef = doc(db, 'users', currentUser.uid);
+    const unsubscribe = onSnapshot(userRef, (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            setMyWishlist(data.wishlist || []);
+        }
+    });
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // ✨ [추가] 찜하기 토글 함수
+  const handleToggleWish = async (postId: string) => {
+    if (!currentUser) return;
+    const userRef = doc(db, 'users', currentUser.uid);
+    const isWished = myWishlist.includes(postId);
+
+    try {
+        if (isWished) {
+            // 찜 해제
+            await updateDoc(userRef, { wishlist: arrayRemove(postId) });
+        } else {
+            // 찜 추가
+            await updateDoc(userRef, { wishlist: arrayUnion(postId) });
+        }
+    } catch (e) {
+        console.error("Wishlist error:", e);
+    }
+  };
+
 
   const getFilteredPosts = () => {
     if (!searchQuery.trim()) return posts;
@@ -252,13 +287,24 @@ export default function MarketListScreen() {
     let statusColor = '#0062ffff';
     if (item.status === '예약중') statusColor = '#ffc107';
     if (item.status === '판매완료') statusColor = '#dc3545';
+    
+    // ✨ 찜 여부 확인
+    const isWished = myWishlist.includes(item.id);
 
     return (
-      <TouchableOpacity style={styles.card} onPress={() => { setSelectedPost(item); setModalVisible(true); }}>
+      <TouchableOpacity style={styles.card} onPress={() => { setSelectedPost(item); setModalVisible(true); }} activeOpacity={0.8}>
         {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.cardImage} /> : 
           <View style={styles.noImage}><Ionicons name="image-outline" size={30} color="#ccc" /></View>}
+        
         <View style={styles.textContainer}>
-          <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
+          <View style={styles.titleRow}>
+              <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
+              {/* ✨ 찜하기 버튼 */}
+              <TouchableOpacity onPress={() => handleToggleWish(item.id)} style={styles.wishButton}>
+                  <Ionicons name={isWished ? "heart" : "heart-outline"} size={22} color={isWished ? "#ff3b30" : "#aaa"} />
+              </TouchableOpacity>
+          </View>
+          
           <Text style={styles.price}>{item.price.toLocaleString()}원</Text>
           <View style={styles.infoRow}>
               <Text style={styles.category}>{item.category}</Text>
@@ -312,6 +358,10 @@ export default function MarketListScreen() {
         contentContainerStyle={{padding: 15, paddingBottom: 100}}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 1000); }} />}
         ListEmptyComponent={<View style={{alignItems:'center', marginTop:50}}><Text style={{color:'#999'}}>{searchQuery ? "검색 결과가 없습니다." : "등록된 상품이 없습니다."}</Text></View>}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === 'android'}
       />
 
       <TouchableOpacity style={styles.fab} onPress={handleCreate}>
@@ -327,7 +377,6 @@ export default function MarketListScreen() {
             </View>
             <ScrollView contentContainerStyle={{padding:20}}>
                 {selectedPost?.imageUrl && (
-                    // ✨ [수정] 이미지를 누르면 확대 뷰어 열림
                     <TouchableOpacity onPress={() => setIsImageViewerVisible(true)}>
                         <Image source={{ uri: selectedPost.imageUrl }} style={styles.modalImage} />
                     </TouchableOpacity>
@@ -338,7 +387,16 @@ export default function MarketListScreen() {
                     <Text style={[styles.modalStatus, { color: modalStatusColor }]}>{selectedPost?.status}</Text>
                 </View>
 
-                <Text style={styles.modalTitle}>{selectedPost?.title}</Text>
+                <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'flex-start'}}>
+                    <Text style={styles.modalTitle}>{selectedPost?.title}</Text>
+                    {/* 상세화면에서도 찜하기 가능 */}
+                    {selectedPost && (
+                        <TouchableOpacity onPress={() => handleToggleWish(selectedPost.id)}>
+                             <Ionicons name={myWishlist.includes(selectedPost.id) ? "heart" : "heart-outline"} size={28} color={myWishlist.includes(selectedPost.id) ? "#ff3b30" : "#aaa"} />
+                        </TouchableOpacity>
+                    )}
+                </View>
+
                 <Text style={styles.modalPrice}>{selectedPost?.price.toLocaleString()}원</Text>
                 
                 <TouchableOpacity 
@@ -387,7 +445,6 @@ export default function MarketListScreen() {
         </View>
       </Modal>
 
-      {/* 모달들 */}
       <UserProfileModal visible={!!profileUserId} userId={profileUserId} onClose={() => setProfileUserId(null)} />
 
       {selectedPost && currentUserId && (
@@ -412,7 +469,6 @@ export default function MarketListScreen() {
         />
       )}
 
-      {/* ✨ [추가] 이미지 확대 뷰어 */}
       {selectedPost?.imageUrl && (
         <ImageView
           images={[{ uri: selectedPost.imageUrl }]}
@@ -441,22 +497,27 @@ const styles = StyleSheet.create({
   cardImage: { width: 80, height: 80, borderRadius: 8, backgroundColor: '#eee' },
   noImage: { width: 80, height: 80, borderRadius: 8, backgroundColor: '#f5f5f5', justifyContent: 'center', alignItems: 'center' },
   textContainer: { flex: 1, marginLeft: 15, justifyContent: 'center' },
-  title: { fontSize: 16, fontWeight: 'bold', marginBottom: 5 },
+  
+  // ✨ 타이틀과 하트 배치 수정
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  title: { fontSize: 16, fontWeight: 'bold', marginBottom: 5, flex: 1, marginRight: 5 },
+  wishButton: { padding: 2 }, // 하트 버튼 터치 영역
+
   price: { fontSize: 16, fontWeight: 'bold', marginBottom: 5 },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
   category: { fontSize: 12, color: '#888' },
   status: { fontSize: 12, fontWeight: 'bold' }, 
   profileLink: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: '#f0f0f0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
   profileLinkText: { fontSize: 11, color: '#555', marginLeft: 4 },
-  fab: { position: 'absolute', bottom: Platform.OS === 'ios' ? 90 : 20, right: 20, backgroundColor: '#0062ffff', borderRadius: 30, flexDirection: 'row', alignItems: 'center', padding: 15, elevation: 5 },
-  fabText: { color: '#fff', fontWeight: 'bold', marginLeft: 5 },
+  fab: { position: 'absolute', bottom: Platform.OS === 'ios' ? 110 : 80, right: 20, backgroundColor: '#0062ffff', borderRadius: 30, flexDirection: 'row', alignItems: 'center', padding: 15, elevation: 5, zIndex: 9999, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84 },
+  fabText: { color: '#fff', fontWeight: 'bold', marginLeft: 5, fontSize: 16 },
   modalContainer: { flex: 1, backgroundColor: '#fff' },
   modalHeader: { padding: 15, alignItems: 'flex-end' },
   modalImage: { width: '100%', height: 300, resizeMode: 'cover', borderRadius: 10 },
   modalInfoRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 15 },
   modalCategory: { color: '#888' },
   modalStatus: { fontWeight: 'bold' }, 
-  modalTitle: { fontSize: 24, fontWeight: 'bold', marginTop: 10 },
+  modalTitle: { fontSize: 24, fontWeight: 'bold', marginTop: 10, flex: 1 },
   modalPrice: { fontSize: 22, fontWeight: 'bold', marginTop: 5, color: '#0062ffff' },
   modalDesc: { fontSize: 16, marginTop: 20, lineHeight: 24, color: '#333' },
   modalProfileBtn: { flexDirection: 'row', alignItems: 'center', marginTop: 10, padding: 10, backgroundColor: '#f0f8ff', borderRadius: 8, alignSelf: 'flex-start' },

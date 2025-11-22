@@ -3,7 +3,7 @@
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
@@ -19,7 +19,6 @@ interface IMessage {
     name: string;
   };
   senderId: string;
-  senderNameFull?: string;
 }
 
 interface ChatRoom {
@@ -41,10 +40,56 @@ interface UserProfile {
   photoURL?: string;
 }
 
-// 내 프로필 데이터 타입 (차단 목록 확인용)
 interface MyProfileData {
   blockedUsers?: string[];
 }
+
+// ✨ [최적화] 메시지 아이템 컴포넌트 (읽음 표시 로직 변경됨)
+const MessageItem = memo(({ item, isMyMessage, displayName, onPressAvatar, unreadCount }: any) => {
+    const displayTime = item.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    return (
+      <View style={[styles.messageRow, isMyMessage ? styles.myMessageRow : styles.otherMessageRow]}>
+        {!isMyMessage && (
+          <View style={styles.avatarContainer}>
+            <TouchableOpacity 
+                onPress={() => onPressAvatar(item.senderId)}
+                style={styles.avatarPlaceholder}
+            >
+                <Text style={styles.avatarText}>{displayName.charAt(0)}</Text>
+            </TouchableOpacity>
+            <Text style={styles.senderName} numberOfLines={1}>{displayName}</Text>
+          </View>
+        )}
+
+        <View style={[styles.messageContentWrapper, isMyMessage ? styles.myMessageContentWrapper : styles.otherMessageContentWrapper]}>
+          {isMyMessage && (
+            <View style={styles.statusAndTimeContainer}>
+              {/* ✨ [수정] 숫자가 0보다 클 때만 표시 (다 읽으면 사라짐) */}
+              {unreadCount > 0 && <Text style={styles.readCountText}>{unreadCount}</Text>}
+              <Text style={styles.timestamp}>{displayTime}</Text>
+            </View>
+          )}
+
+          <View style={isMyMessage ? styles.myBubble : styles.otherBubble}>
+            <Text style={isMyMessage ? styles.myText : styles.otherText}>{item.text}</Text>
+          </View>
+
+          {!isMyMessage && (
+            <View style={styles.statusAndTimeContainer}>
+              <Text style={styles.timestamp}>{displayTime}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    );
+}, (prev, next) => {
+    return (
+        prev.item._id === next.item._id &&
+        prev.unreadCount === next.unreadCount && // 읽음 숫자 바뀌면 리렌더링
+        prev.displayName === next.displayName
+    );
+});
 
 const ChatRoomScreen: React.FC = () => {
   const { id } = useLocalSearchParams();
@@ -60,8 +105,6 @@ const ChatRoomScreen: React.FC = () => {
   const [userDisplayNames, setUserDisplayNames] = useState<{ [uid: string]: string }>({});
   
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
-  
-  // ✨ 내 차단 목록 상태
   const [myBlockedUsers, setMyBlockedUsers] = useState<string[]>([]);
 
   const auth = getAuth();
@@ -69,238 +112,143 @@ const ChatRoomScreen: React.FC = () => {
   const currentUserId = user?.uid;
   const flatListRef = useRef<FlatList>(null);
 
-  // 1. 읽음 처리 업데이트
   const updateLastRead = useCallback(async (userId: string) => {
     if (!chatRoomId || !userId) return;
     const chatDocRef = doc(db, 'chatRooms', chatRoomId);
-    const lastReadField = `lastReadBy.${userId}`;
-
     try {
-      await updateDoc(chatDocRef, {
-        [lastReadField]: serverTimestamp(),
-      });
-    } catch (e: any) {
-      console.error("Failed to update lastRead:", e);
-    }
+      await updateDoc(chatDocRef, { [`lastReadBy.${userId}`]: serverTimestamp() });
+    } catch (e) {}
   }, [chatRoomId]);
 
-  // 2. 채팅방 정보 및 내 차단 목록 리스너
-  const setupListeners = useCallback((currentUserId: string) => {
-    if (!chatRoomId || !currentUserId) return () => {};
+  useEffect(() => {
+    if (!chatRoomId || !currentUserId) return;
 
     const chatDocRef = doc(db, 'chatRooms', chatRoomId);
     const myDocRef = doc(db, 'users', currentUserId);
 
-    // 채팅방 정보 구독
+    // 1. 채팅방 정보 & 멤버 이름
     const unsubChat = onSnapshot(chatDocRef, async (docSnap) => {
       if (docSnap.exists()) {
         const data = { id: docSnap.id, ...docSnap.data() } as ChatRoom;
         setChatRoom(data);
 
-        const names: { [uid: string]: string } = {};
-        const fetchNamePromises = data.members.map(async (memberUid) => {
-          try {
-             const userDoc = await getDoc(doc(db, 'users', memberUid));
-             if (userDoc.exists()) {
-               const userData = userDoc.data() as UserProfile;
-               let displayName = userData.displayName || '익명';
-               if ((userData as any).department) {
-                   displayName = (userData as any).department;
-               } else if (userData.email) {
-                   displayName = userData.email.split('@')[0];
-               }
-               names[memberUid] = displayName;
-             } else {
-               names[memberUid] = '알 수 없음'; 
-             }
-          } catch(e) { names[memberUid] = '익명'; }
-        });
-        await Promise.all(fetchNamePromises);
-        setUserDisplayNames(prev => ({ ...prev, ...names }));
+        const newNames: { [uid: string]: string } = {};
+        const membersToFetch = data.members.filter(uid => !userDisplayNames[uid]);
+
+        if (membersToFetch.length > 0) {
+            const promises = membersToFetch.map(async (uid) => {
+                try {
+                    const uSnap = await getDoc(doc(db, 'users', uid));
+                    if (uSnap.exists()) {
+                        const d = uSnap.data();
+                        let name = '익명';
+                        if (d.department) {
+                             if (d.email) {
+                                 const prefix = d.email.split('@')[0];
+                                 const two = prefix.substring(0, 2);
+                                 if (!isNaN(Number(two)) && two.length === 2) name = `${two}학번 ${d.department}`;
+                                 else name = `${prefix}님 ${d.department}`;
+                             } else { name = d.department; }
+                        } else if (d.displayName) { name = d.displayName; }
+                        else if (d.email) { name = d.email.split('@')[0]; }
+                        newNames[uid] = name;
+                    } else { newNames[uid] = '알 수 없음'; }
+                } catch(e) { newNames[uid] = '익명'; }
+            });
+            await Promise.all(promises);
+            setUserDisplayNames(prev => ({ ...prev, ...newNames }));
+        }
 
         navigation.setOptions({ title: data.name || '채팅방' });
-        await updateLastRead(currentUserId);
-      } else {
-        Alert.alert("오류", "채팅방을 찾을 수 없습니다.");
-        router.back();
+        updateLastRead(currentUserId);
       }
-      setLoading(false);
-    }, (error) => {
-      console.error("Chat listener error:", error);
       setLoading(false);
     });
 
-    // 내 차단 목록 구독
+    // 2. 차단 목록
     const unsubBlock = onSnapshot(myDocRef, (docSnap) => {
         if(docSnap.exists()) {
-            const data = docSnap.data() as MyProfileData;
-            setMyBlockedUsers(data.blockedUsers || []);
+            const d = docSnap.data() as MyProfileData;
+            setMyBlockedUsers(d.blockedUsers || []);
         }
     });
 
-    return () => {
-      unsubChat();
-      unsubBlock();
-    };
-  }, [chatRoomId, navigation, router, updateLastRead]);
+    // 3. 메시지 로드
+    const q = query(collection(db, 'chatRooms', chatRoomId, 'messages'), orderBy('createdAt', 'asc'));
+    const unsubMsg = onSnapshot(q, (snapshot) => {
+        const msgs = snapshot.docs.map(doc => {
+            const d = doc.data();
+            return {
+                _id: doc.id,
+                text: d.text,
+                createdAt: d.createdAt?.toDate() || new Date(),
+                user: { _id: d.senderId, name: 'User' },
+                senderId: d.senderId,
+            } as IMessage;
+        });
+        setMessages(msgs);
+        setLoading(false);
+    });
 
+    return () => { unsubChat(); unsubBlock(); unsubMsg(); };
+  }, [chatRoomId, currentUserId]);
 
-  // 3. 메시지 리스너 (차단 목록 변경 시 재실행하여 필터링 적용)
-  useEffect(() => {
-    let unsubListeners: () => void | undefined;
-    let unsubMessages: () => void | undefined;
-
-    if (!currentUserId || !chatRoomId) {
-      if (!currentUserId) {
-        Alert.alert("로그인 필요", "로그인 상태를 확인해주세요.");
-        router.replace('/(auth)/login');
-      }
-      setLoading(false);
+  const onSend = async () => {
+    if (inputMessage.trim() === '' || !user || !currentUserId) return;
+    if (chatRoom && chatRoom.members.some(mid => myBlockedUsers.includes(mid) && mid !== currentUserId)) {
+      Alert.alert("전송 불가", "차단 관계에 있는 사용자에게는 메시지를 보낼 수 없습니다.");
+      setInputMessage('');
       return;
     }
 
-    unsubListeners = setupListeners(currentUserId);
-
-    const messagesRef = collection(db, 'chatRooms', chatRoomId, 'messages');
-    const q = query(messagesRef, orderBy('createdAt', 'asc'));
-
-    unsubMessages = onSnapshot(q, (snapshot) => {
-      const rawMessages = snapshot.docs.map((docSnap) => {
-        const data = docSnap.data();
-        return {
-          _id: docSnap.id,
-          text: data.text,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          user: { _id: data.senderId, name: userDisplayNames[data.senderId] || data.senderNameFull || '익명' },
-          senderId: data.senderId,
-          senderNameFull: userDisplayNames[data.senderId] || data.senderNameFull || '익명', 
-        } as IMessage;
-      });
-
-      // ✨ [핵심] 차단된 유저의 메시지는 화면에서 제외
-      const filteredMessages = rawMessages.filter(msg => !myBlockedUsers.includes(msg.senderId));
-      setMessages(filteredMessages);
-      
-      setLoading(false);
-      
-      setTimeout(() => {
-        if (flatListRef.current) {
-          flatListRef.current.scrollToEnd({ animated: true });
-        }
-      }, 100);
-    }, (error) => {
-      console.error('Message listener error:', error);
-    });
-
-    return () => {
-      if (unsubListeners) unsubListeners();
-      if (unsubMessages) unsubMessages();
-    };
-  }, [chatRoomId, currentUserId, router, navigation, setupListeners, userDisplayNames, myBlockedUsers]); 
-
-  // 4. 메시지 전송
-  const onSend = async () => {
-    if (inputMessage.trim() === '' || !user || !currentUserId) return;
-
-    // ✨ 차단 체크: 내가 차단한 사람에게는 메시지 전송 불가 (선택사항, 보통 안 보이게만 해도 됨)
-    // 여기서는 경고 없이 그냥 보내지게 하거나, 경고를 띄울 수 있음
-    
-    const messageText = inputMessage.trim();
-    setInputMessage('');
-
-    const messageData = {
-      text: messageText,
-      createdAt: serverTimestamp(),
-      senderId: user.uid,
-      senderNameFull: user.displayName || (user.email ? user.email.split('@')[0] : '익명'), 
-    };
+    const text = inputMessage.trim();
+    setInputMessage(''); 
 
     try {
-      const messagesRef = collection(db, 'chatRooms', chatRoomId, 'messages');
-      await addDoc(messagesRef, messageData);
-      
-      const chatDocRef = doc(db, 'chatRooms', chatRoomId);
-      await updateDoc(chatDocRef, {
-        lastMessage: messageText,
+      await addDoc(collection(db, 'chatRooms', chatRoomId, 'messages'), {
+        text,
+        createdAt: serverTimestamp(),
+        senderId: user.uid,
+      });
+      await updateDoc(doc(db, 'chatRooms', chatRoomId), {
+        lastMessage: text,
         lastMessageTimestamp: serverTimestamp(),
       });
-
-      await updateLastRead(currentUserId);
-
-    } catch (e: any) {
-      Alert.alert('전송 실패', '메시지 전송에 실패했습니다.');
-      console.error('Sending failed:', e);
-    }
+      updateLastRead(currentUserId);
+      // 전송 후 스크롤 내리기
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch (e) { console.error(e); }
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingScreen}>
-        <ActivityIndicator size="large" color="#0062ffff" />
-      </View>
-    );
-  }
+  // 렌더링 함수
+  const renderItem = useCallback(({ item }: { item: IMessage }) => {
+    if (myBlockedUsers.includes(item.senderId)) return null;
 
-  const renderMessage = ({ item: message }: { item: IMessage }) => {
-    const isMyMessage = message.senderId === currentUserId;
-    const displayTime = message.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const isMyMessage = item.senderId === currentUserId;
+    const displayName = userDisplayNames[item.senderId] || '익명';
 
-    let readStatusText = '';
+    // ✨ 읽음 숫자 계산
+    let unreadCount = 0;
     if (isMyMessage && chatRoom) {
-      const otherMembers = chatRoom.members.filter(memberId => memberId !== currentUserId);
-      let unreadCount = 0;
-      otherMembers.forEach(memberId => {
-        const memberLastReadTime = chatRoom.lastReadBy?.[memberId]?.toDate();
-        if (!memberLastReadTime || message.createdAt.getTime() > memberLastReadTime.getTime()) {
-          unreadCount++;
-        }
+      const others = chatRoom.members.filter(id => id !== currentUserId);
+      others.forEach(uid => {
+        const last = chatRoom.lastReadBy?.[uid]?.toDate();
+        if (!last || item.createdAt.getTime() > last.getTime()) unreadCount++;
       });
-      if (otherMembers.length === 0) readStatusText = '';
-      else if (unreadCount === 0) readStatusText = '읽음';
-      else readStatusText = `${unreadCount}`;
     }
 
-    const senderDisplayName = userDisplayNames[message.senderId] || message.senderNameFull || '익명';
-
     return (
-      <View style={[styles.messageRow, isMyMessage ? styles.myMessageRow : styles.otherMessageRow]}>
-        {!isMyMessage && (
-          <View style={styles.avatarContainer}>
-            {/* ✨ 프사 클릭 시 프로필 모달 호출 */}
-            <TouchableOpacity 
-                onPress={() => setProfileUserId(message.senderId)}
-                style={styles.avatarPlaceholder}
-            >
-                <Text style={styles.avatarText}>{senderDisplayName.charAt(0)}</Text>
-            </TouchableOpacity>
-            <Text style={styles.senderName} numberOfLines={1}>{senderDisplayName}</Text>
-          </View>
-        )}
-
-        <View style={[styles.messageContentWrapper, isMyMessage ? styles.myMessageContentWrapper : styles.otherMessageContentWrapper]}>
-          {isMyMessage && (
-            <View style={styles.statusAndTimeContainer}>
-              {readStatusText !== '' && <Text style={styles.readStatusText}>{readStatusText}</Text>}
-              <Text style={styles.timestamp}>{displayTime}</Text>
-            </View>
-          )}
-
-          <View style={isMyMessage ? styles.myBubble : styles.otherBubble}>
-            {!isMyMessage && chatRoom && chatRoom.members.length > 2 && (
-               <Text style={styles.senderNameInBubble}>{senderDisplayName}</Text>
-            )}
-            <Text style={isMyMessage ? styles.myText : styles.otherText}>{message.text}</Text>
-          </View>
-
-          {!isMyMessage && (
-            <View style={styles.statusAndTimeContainer}>
-              <Text style={styles.timestamp}>{displayTime}</Text>
-            </View>
-          )}
-        </View>
-      </View>
+      <MessageItem 
+        item={item}
+        isMyMessage={isMyMessage}
+        displayName={displayName}
+        onPressAvatar={setProfileUserId}
+        unreadCount={unreadCount} // 숫자 전달
+      />
     );
-  };
+  }, [currentUserId, chatRoom, userDisplayNames, myBlockedUsers]);
+
+  if (loading) return <View style={styles.loadingScreen}><ActivityIndicator size="large" color="#0062ffff" /></View>;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -312,11 +260,17 @@ const ChatRoomScreen: React.FC = () => {
         <FlatList
           ref={flatListRef}
           data={messages}
-          keyExtractor={(item) => item._id}
-          renderItem={renderMessage}
-          keyboardDismissMode="on-drag"
+          keyExtractor={item => item._id}
+          renderItem={renderItem}
+          // ✨ [수정] 콘텐츠 크기가 바뀌면(메시지 로드 시) 자동으로 맨 아래로
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })} // 초기 레이아웃 시 스크롤
           style={styles.messageList}
-          contentContainerStyle={styles.messageListContent}
+          contentContainerStyle={styles.messageListContent} // 스타일 적용
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          removeClippedSubviews={true}
         />
 
         <View style={styles.inputWrapper}>
@@ -335,7 +289,6 @@ const ChatRoomScreen: React.FC = () => {
         </View>
       </KeyboardAvoidingView>
 
-      {/* ✨ 프로필 모달 (차단/신고 가능) */}
       <UserProfileModal 
         visible={!!profileUserId}
         userId={profileUserId}
@@ -349,9 +302,10 @@ export default ChatRoomScreen;
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#f5f5f5' },
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' },
+  container: { flex: 1 },
+  loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   messageList: { flex: 1, paddingHorizontal: 10 },
+  // ✨ [수정] flexGrow: 1, justifyContent: 'flex-end' -> 메시지를 항상 아래부터 채움
   messageListContent: { flexGrow: 1, justifyContent: 'flex-end', paddingTop: 10, paddingBottom: 10 },
   messageRow: { flexDirection: 'row', marginVertical: 4, alignItems: 'flex-end' },
   myMessageRow: { justifyContent: 'flex-end' },
@@ -363,17 +317,17 @@ const styles = StyleSheet.create({
   myMessageContentWrapper: { flexDirection: 'row' },
   otherMessageContentWrapper: { flexDirection: 'row' },
   statusAndTimeContainer: { justifyContent: 'flex-end', marginHorizontal: 4, alignItems: 'flex-end', marginBottom: 5 },
-  myBubble: { backgroundColor: '#0062ffff', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 18, borderBottomRightRadius: 2, maxWidth: '100%' },
-  otherBubble: { backgroundColor: '#fff', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 18, borderBottomLeftRadius: 2, maxWidth: '100%', borderWidth: 1, borderColor: '#e0e0e0' },
+  myBubble: { backgroundColor: '#0062ffff', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 18, borderBottomRightRadius: 2 },
+  otherBubble: { backgroundColor: '#fff', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 18, borderBottomLeftRadius: 2, borderWidth: 1, borderColor: '#e0e0e0' },
   senderName: { fontSize: 10, color: '#666', textAlign: 'center', width: '100%' },
-  senderNameInBubble: { fontSize: 12, color: '#666', marginBottom: 3, fontWeight: 'bold' },
   myText: { color: 'white', fontSize: 15 },
   otherText: { color: '#333', fontSize: 15 },
   timestamp: { fontSize: 11, color: '#999', textAlign: 'right' },
-  readStatusText: { fontSize: 11, color: '#0062ffff', fontWeight: 'bold', textAlign: 'right', marginBottom: 2 },
+  // ✨ [수정] 읽음 숫자 스타일 (노란색)
+  readCountText: { fontSize: 11, color: '#0777ffff', fontWeight: 'bold', textAlign: 'right', marginBottom: 2 },
   inputWrapper: { backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#eee' },
   inputContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 8 },
-  input: { flex: 1, minHeight: 40, maxHeight: 120, borderWidth: 1, borderColor: '#ddd', borderRadius: 20, paddingHorizontal: 15, paddingVertical: Platform.OS === 'ios' ? 10 : 8, marginRight: 10 },
-  sendButton: { backgroundColor: '#0062ffff', borderRadius: 20, paddingHorizontal: 15, paddingVertical: 8, justifyContent: 'center' },
+  input: { flex: 1, minHeight: 40, maxHeight: 120, borderWidth: 1, borderColor: '#ddd', borderRadius: 20, paddingHorizontal: 15, paddingVertical: 8, marginRight: 10 },
+  sendButton: { backgroundColor: '#0062ffff', borderRadius: 20, paddingHorizontal: 15, paddingVertical: 8 },
   sendButtonText: { color: 'white', fontWeight: 'bold' },
 });
