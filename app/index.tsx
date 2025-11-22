@@ -1,11 +1,35 @@
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { ImageBackground, StyleSheet, View } from 'react-native';
-import { Button, Text } from 'react-native-paper';
+import { Button, Text } from 'react-native-paper'; // ActivityIndicator 추가
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  // 1. 로딩 상태 관리 (처음에는 true)
+  const [isLoading, setIsLoading] = React.useState(true);
 
+  // 2. 컴포넌트가 마운트되면 타이머 시작
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false); // 2초 뒤 로딩 해제
+    }, 2000);
+
+    // 화면이 사라질 때 타이머 정리 (메모리 누수 방지)
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 3. 로딩 중일 때 보여줄 화면
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        {/* 로딩 중에도 로고를 보여주거나, 스피너만 보여줄 수 있습니다 */}
+        <Text style={styles.title}>KDU KIT.</Text>
+        <Text style={styles.subtitle}>편리한 경동대 생활 도우미</Text>
+      </View>
+    );
+  }
+
+  // 4. 로딩이 끝나면 보여줄 기존 화면 (기존 코드 그대로)
   return (
     <ImageBackground
       source={{ uri: 'https://www.kduniv.ac.kr/attach/IMAGE/mimban/TMPL00/2021/9/GfnCrGlJ8SfmAPFIgpT5.jpg' }}
@@ -13,8 +37,7 @@ export default function WelcomeScreen() {
       blurRadius={2}
     >
       <View style={styles.overlay}>
-        <Text style={styles.title}>환영합니다!</Text>
-        <Text style={styles.subtitle}>우리 앱에 오신 것을 환영해요.</Text>
+        <Text style={styles.title}>KDU KIT.</Text>
         <Button
           mode="contained"
           style={styles.button}
@@ -44,6 +67,7 @@ export default function WelcomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  // ... 기존 스타일 유지 ...
   background: {
     flex: 1,
     justifyContent: 'center',
@@ -77,5 +101,12 @@ const styles = StyleSheet.create({
   },
   signupButton: {
     marginTop: 10,
+  },
+  // ✨ 로딩 화면 전용 스타일 추가
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff', // 깔끔한 흰색 배경
   },
 });

@@ -6,20 +6,18 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "kdukit",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kdu.kdukit"
     },
     "android": {
-      "package": "com.kdu.kdukit",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
-      "softwareKeyboardLayoutMode": "pan"
+      "package": "com.kdu.kit" // 본인의 패키지명
     },
     "web": {
       "bundler": "metro",

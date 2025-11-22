@@ -2,10 +2,15 @@ import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc } from 'firebase/firestore';
+// ✨ [추가] Firebase Functions 관련 함수 임포트
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,7 +20,6 @@ import {
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
 
-// ⚠️ 학과 목록 정의
 const DEPARTMENTS = [
     '학과 선택', 
     '건설시스템공학과',
@@ -40,9 +44,8 @@ const DEPARTMENTS = [
     '호텔조리학과',
 ];
 
-// ⚠️ 이메일 도메인 고정
 const SCHOOL_DOMAIN = '@v.kduniv.ac.kr';
-const RESEND_TIME_SECONDS = 300; // 5분 타이머
+const RESEND_TIME_SECONDS = 300;
 
 export default function SignupScreen() {
   const [emailId, setEmailId] = useState("");
@@ -60,10 +63,11 @@ export default function SignupScreen() {
   const [sendingCode, setSendingCode] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
   const [resendTimer, setResendTimer] = useState(0); 
+  
+  const [showIosPicker, setShowIosPicker] = useState(false);
 
   const router = useRouter();
 
-  // 타이머 로직
   useEffect(() => {
     let timerId: ReturnType<typeof setTimeout> | null = null; 
     if (codeSent && resendTimer > 0) {
@@ -78,7 +82,6 @@ export default function SignupScreen() {
     };
   }, [codeSent, resendTimer]);
 
-  // 초기 입력 유효성 검사
   const validateInitialInputs = () => {
     const nameRegex = /^[가-힣\s]{1,}$/; 
     if (!nameRegex.test(name) || name.trim().length === 0) {
@@ -103,27 +106,53 @@ export default function SignupScreen() {
     return true;
   };
 
-  // 가상 인증번호 요청 로직
-  const requestVerification = () => {
+  // ✨ [변경] 실제 Firebase Functions 호출 함수
+  const requestVerification = async () => {
     if (!validateInitialInputs()) return;
 
     setSendingCode(true); 
     setResendTimer(RESEND_TIME_SECONDS); 
 
-    setTimeout(() => {
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedCode(code);
-      
-      console.log("가상 발송된 인증번호:", code);
-      Alert.alert("인증번호 전송 완료", `인증번호는 [${code}] 입니다. 확인 후 입력해주세요.`);
-      
-      setSendingCode(false); 
-      setCodeSent(true);      
-    }, 2000);
+    // 1. 6자리 랜덤 인증번호 생성
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedCode(code);
+    const fullEmail = emailId + SCHOOL_DOMAIN;
+
+    try {
+      console.log(`[발송 시작] 이메일: ${fullEmail}, 코드: ${code}`);
+
+      // 2. Firebase Functions 호출 준비
+      const functions = getFunctions();
+      // functions/index.js에 작성한 함수 이름 'sendVerificationCode'와 일치해야 함
+      const sendEmailFn = httpsCallable(functions, 'sendVerificationCode'); 
+
+      // 3. 서버로 요청 전송 (이메일과 코드 전달)
+      const result = await sendEmailFn({
+        email: fullEmail,
+        code: code
+      });
+
+      // 4. 성공 처리
+      // @ts-ignore (result.data 타입을 명시하지 않아 발생하는 TS 에러 무시)
+      if (result.data.success) {
+        console.log("[발송 성공]");
+        Alert.alert("전송 완료", `${fullEmail}로 인증번호가 발송되었습니다.\n메일함을 확인해주세요.`);
+        setCodeSent(true);
+      }
+    } catch (error: any) {
+      console.error("[발송 실패]", error);
+      Alert.alert(
+        "전송 실패", 
+        "이메일 전송 중 오류가 발생했습니다.\n네트워크 상태를 확인하거나 잠시 후 다시 시도해주세요."
+      );
+      // 실패 시 타이머 초기화
+      setResendTimer(0);
+      setCodeSent(false);
+    } finally {
+      setSendingCode(false);
+    }
   };
 
-
-  // 최종 회원가입 시 유효성 검사
   const validateFinalInputs = () => {
     const passwordRegex = /^(?=.*[A-Za-z]).{6,}$/;
     if (password !== confirmPw) {
@@ -134,7 +163,6 @@ export default function SignupScreen() {
         Alert.alert("오류", "비밀번호는 영문을 포함하여 6자리 이상이어야 합니다.");
         return false;
     }
-    
     if (!verificationCode || verificationCode !== generatedCode) {
       Alert.alert("오류", "인증번호가 올바르지 않습니다.");
       return false;
@@ -142,19 +170,18 @@ export default function SignupScreen() {
     return true;
   }
 
-
-  // 회원가입 처리
   const handleSignup = async () => {
     const fullEmail = emailId + SCHOOL_DOMAIN;
-    
     if (!validateInitialInputs() || !validateFinalInputs()) return;
-    
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, fullEmail, password);
       const userId = userCredential.user.uid;
+<<<<<<< HEAD
 
       // ✨ [수정] nickname 필드 추가 저장 + trustScore 초기화
+=======
+>>>>>>> 23ff5c319ab4cf41181178dee1b07c5352aaace4
       await setDoc(doc(db, "users", userId), {
         name: name.trim(),
         nickname: nickname.trim(), // 닉네임 저장
@@ -163,56 +190,96 @@ export default function SignupScreen() {
         createdAt: new Date().toISOString(),
         trustScore: 50, // 초기 신뢰도 50점
       });
-
       Alert.alert("회원가입 성공", "가입이 완료되었습니다!");
       router.replace('/(tabs)/explore');
-      
     } catch (e: any) {
       Alert.alert("회원가입 실패", e.message);
     }
     setLoading(false);
   };
 
-
-  // ⚠️ 타이머 표시 형식 (MM:SS)
   const formatTime = (totalSeconds: number) => {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   };
   
-  // ⚠️ Picker 렌더링 함수
-  const renderDepartmentPicker = () => (
-    <View style={styles.pickerWrapper}>
-        <Picker
-            selectedValue={selectedDepartment}
-            onValueChange={(itemValue) => setSelectedDepartment(itemValue)}
-            style={styles.picker}
-            itemStyle={styles.pickerItem} // ⚠️ iOS Picker 텍스트 색상 보정을 위한 itemStyle
-        >
-            {DEPARTMENTS.map((dept) => (
-                <Picker.Item key={dept} label={dept} value={dept} />
-            ))}
-        </Picker>
-    </View>
-  );
+  const renderDepartmentPicker = () => {
+    if (Platform.OS === 'android') {
+      return (
+        <View style={styles.pickerWrapper}>
+            <Picker
+                selectedValue={selectedDepartment}
+                onValueChange={(itemValue) => setSelectedDepartment(itemValue)}
+                style={styles.picker}
+                itemStyle={styles.pickerItem}
+            />
+        </View>
+      );
+    }
 
+    return (
+      <>
+        <TouchableOpacity 
+          style={styles.pickerWrapper} 
+          onPress={() => setShowIosPicker(true)}
+        >
+          <Text style={[styles.pickerItem, { paddingLeft: 16, lineHeight: 50 }]}>
+            {selectedDepartment}
+          </Text>
+        </TouchableOpacity>
+
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={showIosPicker}
+          onRequestClose={() => setShowIosPicker(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <TouchableOpacity onPress={() => setShowIosPicker(false)}>
+                  <Text style={styles.modalDoneText}>완료</Text>
+                </TouchableOpacity>
+              </View>
+              <Picker
+                selectedValue={selectedDepartment}
+                onValueChange={(itemValue) => setSelectedDepartment(itemValue)}
+                style={{ height: 200 }} 
+              >
+                {DEPARTMENTS.map((dept) => (
+                  <Picker.Item key={dept} label={dept} value={dept} color="#000"/>
+                ))}
+              </Picker>
+            </View>
+          </View>
+        </Modal>
+      </>
+    );
+  };
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"} 
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+    >
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.title}>회원가입</Text>
         
-        {/* 이름 입력 필드 */}
         <TextInput
           placeholder="이름 (한글만 입력 가능)"
-          placeholderTextColor="#A9A9A9" // ✨ placeholderTextColor 명시
+          placeholderTextColor="#A9A9A9"
           value={name}
           onChangeText={setName}
           style={styles.input}
           autoCapitalize="words"
         />
 
+<<<<<<< HEAD
         {/* ✨ [추가] 닉네임 입력 필드 */}
         <TextInput
           placeholder="닉네임 (2~10자)"
@@ -227,14 +294,14 @@ export default function SignupScreen() {
         <View style={styles.inputLabelContainer}>
             <Text style={styles.inputLabel}>학과</Text>
         </View>
+=======
+>>>>>>> 23ff5c319ab4cf41181178dee1b07c5352aaace4
         {renderDepartmentPicker()}
 
-
-        {/* 이메일 ID 입력 필드 */}
         <View style={styles.emailGroup}>
             <TextInput
                 placeholder="학교 이메일 ID"
-                placeholderTextColor="#A9A9A9" // ✨ placeholderTextColor 명시
+                placeholderTextColor="#A9A9A9"
                 value={emailId}
                 onChangeText={setEmailId}
                 autoCapitalize="none"
@@ -244,18 +311,16 @@ export default function SignupScreen() {
             <Text style={styles.emailDomainText}>{SCHOOL_DOMAIN}</Text>
         </View>
 
-
         <View style={styles.verificationGroup}>
           <TextInput
             placeholder="인증번호"
-            placeholderTextColor="#A9A9A9" // ✨ placeholderTextColor 명시
+            placeholderTextColor="#A9A9A9"
             value={verificationCode}
             onChangeText={setVerificationCode}
             editable={codeSent}
             style={[styles.input, styles.verificationInput]}
           />
           
-          {/* 버튼 렌더링 로직: 타이머/재전송/받기 */}
           {resendTimer > 0 ? (
             <TouchableOpacity
               style={[styles.verifyButton, styles.timerButton]}
@@ -283,7 +348,6 @@ export default function SignupScreen() {
           )}
         </View>
 
-        {/* 상태 메시지 및 재전송 안내 텍스트 추가 */}
         {resendTimer > 0 ? (
             <Text style={styles.statusText}>
               인증번호가 전송되었습니다. {formatTime(resendTimer)} 남았습니다.
@@ -294,14 +358,13 @@ export default function SignupScreen() {
             </Text>
         ) : (
              <Text style={[styles.statusText, {color: '#999'}]}>
-                학교 이메일을 입력하고 인증번호를 받아주세요.
+               학교 이메일을 입력하고 인증번호를 받아주세요.
              </Text>
         )}
 
-
         <TextInput
           placeholder="비밀번호 (영문 포함 6자리 이상)"
-          placeholderTextColor="#A9A9A9" // ✨ placeholderTextColor 명시
+          placeholderTextColor="#A9A9A9"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -309,7 +372,7 @@ export default function SignupScreen() {
         />
         <TextInput
           placeholder="비밀번호 확인"
-          placeholderTextColor="#A9A9A9" // ✨ placeholderTextColor 명시
+          placeholderTextColor="#A9A9A9"
           value={confirmPw}
           onChangeText={setConfirmPw}
           secureTextEntry
@@ -328,7 +391,7 @@ export default function SignupScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -341,6 +404,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "center",
     padding: 32,
+    paddingBottom: 100, 
   },
   title: {
     fontSize: 28,
@@ -356,7 +420,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f2f3f7",
     marginBottom: 18,
     fontSize: 16,
-    color: '#333', // ⚠️ 입력될 텍스트 색상도 명시
+    color: '#333',
   },
   inputLabelContainer: {
     paddingHorizontal: 5,
@@ -367,7 +431,6 @@ const styles = StyleSheet.create({
     color: '#555',
     fontWeight: 'bold',
   },
-  // 이메일 도메인 표시 그룹
   emailGroup: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -384,30 +447,29 @@ const styles = StyleSheet.create({
     paddingRight: 5,
     paddingHorizontal: 16,
     backgroundColor: 'transparent',
-    color: '#333', // ⚠️ 입력될 텍스트 색상도 명시
+    color: '#333',
   },
   emailDomainText: {
     fontSize: 16,
     color: '#888',
     fontWeight: '600',
   },
-  // 학과 Picker 스타일
   pickerWrapper: {
     marginBottom: 18,
     backgroundColor: "#f2f3f7",
     borderRadius: 8,
     height: 50,
     justifyContent: 'center',
-    overflow: 'hidden',
+    overflow: 'hidden', 
   },
   picker: {
     width: '100%',
     height: 50,
   },
   pickerItem: {
-    color: '#333', // ⚠️ Picker.Item 텍스트 색상 명시
+    color: '#333',
+    fontSize: 16,
   },
-  // 나머지 스타일
   button: {
     marginTop: 10,
     borderRadius: 8,
@@ -434,7 +496,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     backgroundColor: "#f2f3f7",
     fontSize: 16,
-    color: '#333', // ⚠️ 입력될 텍스트 색상 명시
+    color: '#333',
   },
   verifyButton: {
     backgroundColor: "#4a90e2",
@@ -459,5 +521,36 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     paddingLeft: 5,
     marginTop: 5,
-  }
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'transparent', 
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20, 
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalHeader: {
+    height: 45,
+    backgroundColor: '#f2f3f7',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  modalDoneText: {
+    color: '#0062ffff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
 });
