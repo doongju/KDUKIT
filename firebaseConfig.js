@@ -1,10 +1,12 @@
-import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApp, getApps, initializeApp } from 'firebase/app';
+// ✨ initializeAuth, getReactNativePersistence 그대로 사용
 import { getReactNativePersistence, initializeAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+// ✨ [수정] getFirestore 대신 initializeFirestore를 가져옵니다
+import { initializeFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
-// ⚠️ 본인의 Firebase 프로젝트 설정 값을 여기에 넣으세요!
+// ⚠️ 본인의 Firebase 프로젝트 설정 값 (그대로 유지)
 const firebaseConfig = {
   apiKey: "AIzaSyABf5Q8t1WcS3tNq6JRRjToC7NhayYJfko",
   authDomain: "kdukit.firebaseapp.com",
@@ -15,7 +17,7 @@ const firebaseConfig = {
   measurementId: "G-T20FGPNNQL"
 };
 
-// 이미 Firebase 앱이 초기화되어 있으면 기존 앱을 사용하고, 아니면 새로 초기화합니다.
+// 앱 초기화
 let app;
 if (getApps().length === 0) {
   app = initializeApp(firebaseConfig);
@@ -23,13 +25,17 @@ if (getApps().length === 0) {
   app = getApp();
 }
 
-// 인증 초기화 (AsyncStorage 사용)
+// 인증 초기화 (AsyncStorage 사용 - 기존 유지)
 export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(ReactNativeAsyncStorage)
+  persistence: getReactNativePersistence(AsyncStorage)
 });
 
-// 데이터베이스 초기화
-export const db = getFirestore(app);
+// ✨ [핵심 수정] 데이터베이스 초기화 설정 변경
+// getFirestore(app) 대신 아래 코드를 사용해야 React Native에서 렉이 안 걸립니다.
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true, // 🚀 이게 속도 해결의 열쇠입니다!
+  ignoreUndefinedProperties: true,    // (선택) undefined 값 무시하여 에러 방지
+});
 
-// ✨ 스토리지(이미지 저장소) 초기화 ✨
+// 스토리지 초기화
 export const storage = getStorage(app);

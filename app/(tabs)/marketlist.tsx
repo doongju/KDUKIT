@@ -78,10 +78,8 @@ export default function MarketListScreen() {
 
   const [isImageViewerVisible, setIsImageViewerVisible] = useState(false);
 
-  // ✨ [추가] 내 찜 목록 상태
   const [myWishlist, setMyWishlist] = useState<string[]>([]);
 
-  // 뒤로가기 핸들링
   useEffect(() => {
     const backAction = () => {
       if (isImageViewerVisible) { setIsImageViewerVisible(false); return true; }
@@ -96,7 +94,6 @@ export default function MarketListScreen() {
     return () => backHandler.remove();
   }, [isSearching, modalVisible, profileUserId, reviewModalVisible, pendingReviewPost, isImageViewerVisible]);
 
-  // 1. 게시글 데이터 로드
   const fetchPosts = useCallback(() => {
     if (!currentUser) { setLoading(false); setPosts([]); return () => {}; }
     setLoading(true);
@@ -106,7 +103,6 @@ export default function MarketListScreen() {
     }
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as MarketPost[];
-      // 최신순 정렬 (ID 기준 역순)
       data.sort((a, b) => (b.id > a.id ? 1 : -1));
       setPosts(data);
       setLoading(false);
@@ -119,7 +115,6 @@ export default function MarketListScreen() {
 
   useEffect(() => { const unsub = fetchPosts(); return () => unsub(); }, [fetchPosts]);
 
-  // 2. 구매자 리뷰 대기 체크
   useEffect(() => {
     if (!currentUser) return;
     const q = query(
@@ -139,7 +134,6 @@ export default function MarketListScreen() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // ✨ [추가] 3. 내 찜 목록 실시간 감지
   useEffect(() => {
     if (!currentUser) return;
     const userRef = doc(db, 'users', currentUser.uid);
@@ -152,7 +146,6 @@ export default function MarketListScreen() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // ✨ [추가] 찜하기 토글 함수
   const handleToggleWish = async (postId: string) => {
     if (!currentUser) return;
     const userRef = doc(db, 'users', currentUser.uid);
@@ -160,17 +153,14 @@ export default function MarketListScreen() {
 
     try {
         if (isWished) {
-            // 찜 해제
             await updateDoc(userRef, { wishlist: arrayRemove(postId) });
         } else {
-            // 찜 추가
             await updateDoc(userRef, { wishlist: arrayUnion(postId) });
         }
     } catch (e) {
         console.error("Wishlist error:", e);
     }
   };
-
 
   const getFilteredPosts = () => {
     if (!searchQuery.trim()) return posts;
@@ -287,24 +277,19 @@ export default function MarketListScreen() {
     let statusColor = '#0062ffff';
     if (item.status === '예약중') statusColor = '#ffc107';
     if (item.status === '판매완료') statusColor = '#dc3545';
-    
-    // ✨ 찜 여부 확인
     const isWished = myWishlist.includes(item.id);
 
     return (
       <TouchableOpacity style={styles.card} onPress={() => { setSelectedPost(item); setModalVisible(true); }} activeOpacity={0.8}>
         {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.cardImage} /> : 
           <View style={styles.noImage}><Ionicons name="image-outline" size={30} color="#ccc" /></View>}
-        
         <View style={styles.textContainer}>
           <View style={styles.titleRow}>
               <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
-              {/* ✨ 찜하기 버튼 */}
               <TouchableOpacity onPress={() => handleToggleWish(item.id)} style={styles.wishButton}>
                   <Ionicons name={isWished ? "heart" : "heart-outline"} size={22} color={isWished ? "#ff3b30" : "#aaa"} />
               </TouchableOpacity>
           </View>
-          
           <Text style={styles.price}>{item.price.toLocaleString()}원</Text>
           <View style={styles.infoRow}>
               <Text style={styles.category}>{item.category}</Text>
@@ -358,10 +343,6 @@ export default function MarketListScreen() {
         contentContainerStyle={{padding: 15, paddingBottom: 100}}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 1000); }} />}
         ListEmptyComponent={<View style={{alignItems:'center', marginTop:50}}><Text style={{color:'#999'}}>{searchQuery ? "검색 결과가 없습니다." : "등록된 상품이 없습니다."}</Text></View>}
-        initialNumToRender={6}
-        maxToRenderPerBatch={6}
-        windowSize={5}
-        removeClippedSubviews={Platform.OS === 'android'}
       />
 
       <TouchableOpacity style={styles.fab} onPress={handleCreate}>
@@ -372,9 +353,13 @@ export default function MarketListScreen() {
       {/* 상품 상세 모달 */}
       <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalContainer}>
+            {/* ✨ 헤더: X 버튼 왼쪽 배치 */}
             <View style={styles.modalHeader}>
-                <TouchableOpacity onPress={() => setModalVisible(false)}><Ionicons name="close" size={28} color="#333" /></TouchableOpacity>
+                <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
+                    <Ionicons name="close" size={32} color="#333" />
+                </TouchableOpacity>
             </View>
+
             <ScrollView contentContainerStyle={{padding:20}}>
                 {selectedPost?.imageUrl && (
                     <TouchableOpacity onPress={() => setIsImageViewerVisible(true)}>
@@ -389,7 +374,6 @@ export default function MarketListScreen() {
 
                 <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'flex-start'}}>
                     <Text style={styles.modalTitle}>{selectedPost?.title}</Text>
-                    {/* 상세화면에서도 찜하기 가능 */}
                     {selectedPost && (
                         <TouchableOpacity onPress={() => handleToggleWish(selectedPost.id)}>
                              <Ionicons name={myWishlist.includes(selectedPost.id) ? "heart" : "heart-outline"} size={28} color={myWishlist.includes(selectedPost.id) ? "#ff3b30" : "#aaa"} />
@@ -497,24 +481,38 @@ const styles = StyleSheet.create({
   cardImage: { width: 80, height: 80, borderRadius: 8, backgroundColor: '#eee' },
   noImage: { width: 80, height: 80, borderRadius: 8, backgroundColor: '#f5f5f5', justifyContent: 'center', alignItems: 'center' },
   textContainer: { flex: 1, marginLeft: 15, justifyContent: 'center' },
-  
-  // ✨ 타이틀과 하트 배치 수정
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   title: { fontSize: 16, fontWeight: 'bold', marginBottom: 5, flex: 1, marginRight: 5 },
-  wishButton: { padding: 2 }, // 하트 버튼 터치 영역
-
+  wishButton: { padding: 2 }, 
   price: { fontSize: 16, fontWeight: 'bold', marginBottom: 5 },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
   category: { fontSize: 12, color: '#888' },
   status: { fontSize: 12, fontWeight: 'bold' }, 
   profileLink: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: '#f0f0f0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
   profileLinkText: { fontSize: 11, color: '#555', marginLeft: 4 },
-  fab: { position: 'absolute', bottom: 90, right: 20, backgroundColor: '#0062ffff', borderRadius: 30, flexDirection: 'row', alignItems: 'center', padding: 15, elevation: 5 },
-  fabText: { color: '#fff', fontWeight: 'bold', marginLeft: 5 },
+  
   fab: { position: 'absolute', bottom: Platform.OS === 'ios' ? 110 : 80, right: 20, backgroundColor: '#0062ffff', borderRadius: 30, flexDirection: 'row', alignItems: 'center', padding: 15, elevation: 5, zIndex: 9999, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84 },
   fabText: { color: '#fff', fontWeight: 'bold', marginLeft: 5, fontSize: 16 },
-  modalContainer: { flex: 1, backgroundColor: '#fff' },
-  modalHeader: { padding: 15, alignItems: 'flex-end' },
+  
+  // ✨ [수정된 모달 스타일]
+  modalContainer: { 
+      flex: 1, 
+      backgroundColor: '#fff',
+      // 아이폰이면 상단 여백을 좀 줘서 X버튼이 잘 눌리게 함 (상태바 침범 방지)
+      paddingTop: Platform.OS === 'ios' ? 40 : 0 
+  },
+  modalHeader: { 
+      flexDirection: 'row', 
+      justifyContent: 'flex-start', // 왼쪽 정렬
+      alignItems: 'center', 
+      paddingHorizontal: 15, 
+      paddingBottom: 10 
+  },
+  closeButton: { 
+      padding: 10, 
+      marginLeft: -10 
+  },
+  
   modalImage: { width: '100%', height: 300, resizeMode: 'cover', borderRadius: 10 },
   modalInfoRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 15 },
   modalCategory: { color: '#888' },

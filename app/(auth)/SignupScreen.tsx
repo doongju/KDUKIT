@@ -2,7 +2,6 @@ import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc } from 'firebase/firestore';
-// ✨ [추가] Firebase Functions 관련 함수 임포트
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import React, { useEffect, useState } from "react";
 import {
@@ -56,7 +55,6 @@ export default function SignupScreen() {
   const [confirmPw, setConfirmPw] = useState("");
   const [name, setName] = useState("");
   
-  // ✨ [추가] 닉네임 상태
   const [nickname, setNickname] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -89,7 +87,6 @@ export default function SignupScreen() {
         return false;
     }
 
-    // ✨ [추가] 닉네임 유효성 검사 (2~10자)
     if (nickname.trim().length < 2 || nickname.trim().length > 10) {
         Alert.alert("오류", "닉네임은 2자 이상 10자 이하로 입력해주세요.");
         return false;
@@ -106,14 +103,12 @@ export default function SignupScreen() {
     return true;
   };
 
-  // ✨ [변경] 실제 Firebase Functions 호출 함수
   const requestVerification = async () => {
     if (!validateInitialInputs()) return;
 
     setSendingCode(true); 
     setResendTimer(RESEND_TIME_SECONDS); 
 
-    // 1. 6자리 랜덤 인증번호 생성
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     setGeneratedCode(code);
     const fullEmail = emailId + SCHOOL_DOMAIN;
@@ -121,19 +116,15 @@ export default function SignupScreen() {
     try {
       console.log(`[발송 시작] 이메일: ${fullEmail}, 코드: ${code}`);
 
-      // 2. Firebase Functions 호출 준비
       const functions = getFunctions();
-      // functions/index.js에 작성한 함수 이름 'sendVerificationCode'와 일치해야 함
       const sendEmailFn = httpsCallable(functions, 'sendVerificationCode'); 
 
-      // 3. 서버로 요청 전송 (이메일과 코드 전달)
       const result = await sendEmailFn({
         email: fullEmail,
         code: code
       });
 
-      // 4. 성공 처리
-      // @ts-ignore (result.data 타입을 명시하지 않아 발생하는 TS 에러 무시)
+      // @ts-ignore
       if (result.data.success) {
         console.log("[발송 성공]");
         Alert.alert("전송 완료", `${fullEmail}로 인증번호가 발송되었습니다.\n메일함을 확인해주세요.`);
@@ -145,7 +136,6 @@ export default function SignupScreen() {
         "전송 실패", 
         "이메일 전송 중 오류가 발생했습니다.\n네트워크 상태를 확인하거나 잠시 후 다시 시도해주세요."
       );
-      // 실패 시 타이머 초기화
       setResendTimer(0);
       setCodeSent(false);
     } finally {
@@ -178,15 +168,21 @@ export default function SignupScreen() {
       const userCredential = await createUserWithEmailAndPassword(auth, fullEmail, password);
       const userId = userCredential.user.uid;
 
-      // ✨ [수정] nickname 필드 추가 저장 + trustScore 초기화
+      // ✨ [수정] 모든 필드 완벽 초기화
       await setDoc(doc(db, "users", userId), {
         name: name.trim(),
-        nickname: nickname.trim(), // 닉네임 저장
+        nickname: nickname.trim(),
         department: selectedDepartment,
         email: fullEmail,
         createdAt: new Date().toISOString(),
-        trustScore: 50, // 초기 신뢰도 50점
+        
+        // 👇 초기값 설정 (매우 중요)
+        trustScore: 50,      // 신뢰도 50점 시작
+        reportCount: 0,      // 신고 횟수 0회 시작
+        blockedUsers: [],    // 차단 목록 빈 배열
+        wishlist: []         // 찜 목록 빈 배열
       });
+      
       Alert.alert("회원가입 성공", "가입이 완료되었습니다!");
       router.replace('/(tabs)/explore');
     } catch (e: any) {
@@ -210,11 +206,23 @@ export default function SignupScreen() {
                 onValueChange={(itemValue) => setSelectedDepartment(itemValue)}
                 style={styles.picker}
                 itemStyle={styles.pickerItem}
-            />
+                // ✨ [추가] 안드로이드에서 아이템 목록 렌더링
+                mode="dropdown"
+            >
+                {DEPARTMENTS.map((dept) => (
+                    <Picker.Item 
+                        key={dept} 
+                        label={dept} 
+                        value={dept} 
+                        style={{ color: '#333', fontSize: 16 }} // 안드로이드 아이템 스타일
+                    />
+                ))}
+            </Picker>
         </View>
       );
     }
 
+    // iOS 코드는 그대로 유지
     return (
       <>
         <TouchableOpacity 
@@ -276,7 +284,6 @@ export default function SignupScreen() {
           autoCapitalize="words"
         />
 
-        {/* ✨ [추가] 닉네임 입력 필드 */}
         <TextInput
           placeholder="닉네임 (2~10자)"
           placeholderTextColor="#A9A9A9"
@@ -286,7 +293,6 @@ export default function SignupScreen() {
           autoCapitalize="none"
         />
 
-        {/* 학과 드롭다운 */}
         <View style={styles.inputLabelContainer}>
             <Text style={styles.inputLabel}>학과</Text>
         </View>
