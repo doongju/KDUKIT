@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router'; // ✅ Stack 추가
 import { getAuth } from 'firebase/auth';
-import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'; // ✅ setDoc, serverTimestamp 추가
+import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -93,27 +93,20 @@ export default function LostItemDetailScreen() {
             return;
         }
 
-        // 1. 채팅방 ID 생성 규칙: 'lost_물건ID_문의자ID'
-        // 이렇게 하면 이 물건에 대해 내가 문의한 채팅방은 항상 하나로 유지됩니다.
         const chatRoomId = `lost_${id}_${user.uid}`;
 
         try {
             const chatRoomRef = doc(db, "chatRooms", chatRoomId);
             
-            // 2. 채팅방 정보 저장 (없으면 생성, 있으면 업데이트)
-            // merge: true 옵션 덕분에 기존 데이터(메시지 등)는 유지됩니다.
             await setDoc(chatRoomRef, {
-                type: 'private', // 1:1 채팅 타입
-                partyId: null,   // 파티 채팅이 아님
-                name: `${item.itemName}`, // 채팅방 이름 (초기값)
-                members: [user.uid, item.creatorId], // 참여자: 나(문의자)와 작성자
-                relatedItemId: id, // 연관된 물건 ID 저장 (나중에 필요할 수 있음)
+                type: 'private',
+                partyId: null,
+                name: `${item.itemName}`,
+                members: [user.uid, item.creatorId],
+                relatedItemId: id,
                 updatedAt: serverTimestamp(),
-                // 아직 메시지가 없을 수도 있으므로 lastMessage 관련 필드는 
-                // 채팅방이 처음 만들어질 때만 세팅되거나, 비워둡니다.
             }, { merge: true });
 
-            // 3. 채팅방으로 이동
             router.push(`/chat/${chatRoomId}`);
 
         } catch (error) {
@@ -138,6 +131,9 @@ export default function LostItemDetailScreen() {
 
     return (
         <View style={[styles.container, { paddingTop: insets.top }]}>
+            {/* ✅ 기본 헤더 숨김 설정 */}
+            <Stack.Screen options={{ headerShown: false }} />
+
             <View style={styles.headerBar}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={28} color="#333" />
