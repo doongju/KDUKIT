@@ -17,7 +17,7 @@ import {
   updateDoc,
   where
 } from 'firebase/firestore';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   BackHandler,
@@ -181,7 +181,7 @@ export default function MarketListScreen() {
             await deleteDoc(doc(db, "marketPosts", post.id));
             Alert.alert("삭제 완료", "게시글이 삭제되었습니다.");
             setModalVisible(false);
-          } catch(e) { Alert.alert("오류", "삭제 실패"); }
+          } catch { Alert.alert("오류", "삭제 실패"); }
       }}
     ]);
   };
@@ -251,7 +251,7 @@ export default function MarketListScreen() {
                     buyerName = `${entryYear}학번 ${d.department} 학우`;
                 }
             }
-        } catch(e) {}
+        } catch {}
         
         await setDoc(chatRoomRef, {
           name: `[구매문의] ${post.title}`, 
@@ -268,7 +268,7 @@ export default function MarketListScreen() {
       }
       setModalVisible(false);
       router.push(`/chat/${chatRoomId}`);
-    } catch (e) {
+    } catch  {
       Alert.alert("오류", "채팅방 연결 실패");
     }
   };

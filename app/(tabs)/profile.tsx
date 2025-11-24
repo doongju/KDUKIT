@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { deleteUser, getAuth, signOut } from 'firebase/auth';
 import { arrayRemove, deleteDoc, doc, getDoc as getDocLite, onSnapshot, updateDoc } from 'firebase/firestore';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,

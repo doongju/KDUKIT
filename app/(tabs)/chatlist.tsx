@@ -5,7 +5,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 // ✨ [추가됨] doc, updateDoc, arrayRemove
 import { arrayRemove, collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
-import React, { useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
