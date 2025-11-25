@@ -63,6 +63,7 @@ const MessageItem = memo(({ item, isMyMessage, displayName, onPressAvatar, unrea
         prev.displayName === next.displayName
     );
 });
+MessageItem.displayName = "MessageItem";
 
 // [최적화 2] 입력창 분리
 const ChatInput = memo(({ onSend, bottomInset }: { onSend: (text: string) => void, bottomInset: number }) => {
@@ -95,6 +96,7 @@ const ChatInput = memo(({ onSend, bottomInset }: { onSend: (text: string) => voi
         </View>
     );
 });
+ChatInput.displayName = "ChatInput";
 
 // --- 메인 화면 ---
 const ChatRoomScreen: React.FC = () => {

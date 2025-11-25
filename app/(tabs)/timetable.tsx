@@ -1,11 +1,13 @@
 import { Picker } from '@react-native-picker/picker';
-import Checkbox from 'expo-checkbox';
+import { Checkbox } from 'expo-checkbox';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { addDoc, collection, deleteDoc, doc, getDocs, query, updateDoc, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,21 +18,32 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
-// 시간표 항목의 데이터 구조를 정의합니다.
+// ✨ 랜덤으로 사용할 파스텔 톤 색상 팔레트
+const CARD_COLORS = [
+  '#FFADAD', '#FFD6A5', '#FDFFB6', '#CAFFBF', '#9BF6FF', 
+  '#A0C4FF', '#BDB2FF', '#FFC6FF', '#E2F0CB', '#FFDAC1',
+];
+
+// --- Types ---
 interface TimetableEntry {
   id: string;
   courseName: string;
   professor: string;
   location: string;
-  time: string; // "월 09:30-10:30" 형식
+  time: string;
   userId: string;
   isOnline: boolean;
+  color?: string; 
 }
 
-// 요일
-const daysOfWeek = ['월', '화', '수', '목', '금'];
+interface PickerItemData {
+  label: string;
+  value: any;
+}
 
-// ⚠️ 9시 30분부터 시작하여 1시간 간격으로 시간 옵션 생성 (18시 30분까지)
+// --- Constants ---
+const daysOfWeek = ['월요일', '화요일', '수요일', '목요일', '금요일'];
+
 const generateTimeOptions = () => {
   const options = [];
   for (let h = 9; h <= 18; h++) {
@@ -44,42 +57,121 @@ const generateTimeOptions = () => {
 
 const timeOptions = generateTimeOptions();
 
-// 시간표 데이터 파싱 함수 (예: "월 09:30-10:30" -> {day: '월', start: 9.5, end: 10.5})
+// --- Helpers ---
 const parseTime = (timeString: string) => {
   if (timeString === '온라인 강의') return null;
-
   const parts = timeString.split(' ');
-  if (parts.length < 2) {
-    console.warn("Invalid time string format:", timeString);
-    return null;
-  }
-
+  if (parts.length < 2) return null;
   const [day, timeRange] = parts;
   const [startTimeStr, endTimeStr] = timeRange.split('-');
-
   const parseHourMinute = (hmStr: string) => {
     const [h, m] = hmStr.split(':').map(Number);
     return h + m / 60;
   };
-
   try {
     const start = parseHourMinute(startTimeStr);
     const end = parseHourMinute(endTimeStr);
     return { day, start, end };
-  } catch (e) {
-    console.error("Error parsing time components:", startTimeStr, endTimeStr, e);
+  } catch {
     return null;
   }
 };
 
+const getColorByString = (str: string) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % CARD_COLORS.length;
+  return CARD_COLORS[index];
+};
 
+// 커스텀 피커 컴포넌트 (모달 방식)
+const CustomPicker = ({ 
+  selectedValue, 
+  onValueChange, 
+  items, 
+}: { 
+  selectedValue: any; 
+  onValueChange: (val: any) => void; 
+  items: PickerItemData[];
+  label?: string;
+}) => {
+  const [showIosPicker, setShowIosPicker] = useState(false);
+  const selectedLabel = items.find(i => i.value === selectedValue)?.label || items[0]?.label;
+
+  if (Platform.OS === 'android') {
+    return (
+      <View style={pickerStyles.pickerWrapper}>
+        <Picker
+          selectedValue={selectedValue}
+          onValueChange={onValueChange}
+          style={pickerStyles.picker}
+          itemStyle={pickerStyles.pickerItem}
+          mode="dropdown"
+        >
+          {items.map((item) => (
+            <Picker.Item 
+              key={item.label} 
+              label={item.label} 
+              value={item.value} 
+              style={{ color: '#333', fontSize: 16 }}
+            />
+          ))}
+        </Picker>
+      </View>
+    );
+  }
+
+  return (
+    <View style={pickerStyles.iosContainer}>
+      <TouchableOpacity 
+        style={pickerStyles.pickerWrapper} 
+        onPress={() => setShowIosPicker(true)}
+        activeOpacity={0.7}
+      >
+        <Text style={[pickerStyles.pickerItemText, { paddingLeft: 16, lineHeight: 50 }]}>
+          {selectedLabel}
+        </Text>
+      </TouchableOpacity>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showIosPicker}
+        onRequestClose={() => setShowIosPicker(false)}
+      >
+        <View style={pickerStyles.modalOverlay}>
+          <View style={pickerStyles.modalContent}>
+            <View style={pickerStyles.modalHeader}>
+              <TouchableOpacity onPress={() => setShowIosPicker(false)}>
+                <Text style={pickerStyles.modalDoneText}>완료</Text>
+              </TouchableOpacity>
+            </View>
+            <Picker
+              selectedValue={selectedValue}
+              onValueChange={onValueChange}
+              style={{ width: '100%', height: 200 }}
+            >
+              {items.map((item) => (
+                <Picker.Item key={item.label} label={item.label} value={item.value} color="#000"/>
+              ))}
+            </Picker>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+};
+
+// --- Main Screen ---
 const TimetableScreen: React.FC = () => {
   const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
   const [courseName, setCourseName] = useState('');
   const [professor, setProfessor] = useState('');
   const [location, setLocation] = useState('');
-  const [selectedDay, setSelectedDay] = useState<string>(daysOfWeek[0]);
   
+  const [selectedDay, setSelectedDay] = useState<string>(daysOfWeek[0]);
   const [selectedStartTime, setSelectedStartTime] = useState<number>(timeOptions[0]?.value || 9.5);
   const [selectedEndTime, setSelectedEndTime] = useState<number>(timeOptions[Math.min(1, timeOptions.length - 1)]?.value || 10.5);
 
@@ -90,30 +182,22 @@ const TimetableScreen: React.FC = () => {
   const [isAdding, setIsAdding] = useState(false);
   
   const insets = useSafeAreaInsets();
-
   const auth = getAuth();
   const user = auth.currentUser;
 
   const fetchTimetable = async () => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
+    if (!user) { setLoading(false); return; }
     setLoading(true);
     try {
       const timetableCollection = collection(db, 'timetables');
       const userQuery = query(timetableCollection, where("userId", "==", user.uid));
       const timetableSnapshot = await getDocs(userQuery);
       const timetableList = timetableSnapshot.docs
-        .map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as TimetableEntry[];
+        .map(doc => ({ id: doc.id, ...doc.data() })) as TimetableEntry[];
       setTimetable(timetableList);
     } catch (error) {
-      console.error("시간표 데이터를 불러오는 중 오류 발생: ", error);
-      Alert.alert("오류", "시간표를 불러오지 못했습니다. 권한 또는 네트워크를 확인해주세요.");
+      console.error(error);
+      Alert.alert("오류", "시간표 로드 실패");
     } finally {
       setLoading(false);
     }
@@ -121,24 +205,56 @@ const TimetableScreen: React.FC = () => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, currentUser => {
-      if (currentUser) {
-        fetchTimetable();
-      } else {
-        setTimetable([]);
-        setLoading(false);
-      }
+      if (currentUser) fetchTimetable();
+      else { setTimetable([]); setLoading(false); }
     });
     return () => unsubscribe();
   }, []);
 
+  const resetForm = () => {
+    setIsEditing(false);
+    setCurrentEditId(null);
+    setCourseName('');
+    setProfessor('');
+    setLocation('');
+    setIsOnline(false);
+    setSelectedDay(daysOfWeek[0]);
+    setSelectedStartTime(timeOptions[0]?.value || 9.5);
+    setSelectedEndTime(timeOptions[Math.min(1, timeOptions.length - 1)]?.value || 10.5);
+    setIsAdding(false);
+  };
+
   const handleAddEntry = async () => {
-    if (!courseName || !user) {
-      Alert.alert('오류', '과목명을 입력해주세요.');
-      return;
-    }
-    if (!isOnline && selectedStartTime >= selectedEndTime) {
-      Alert.alert('오류', '시작 시간은 종료 시간보다 빨라야 합니다.');
-      return;
+    if (!courseName || !user) { Alert.alert('오류', '과목명을 입력해주세요.'); return; }
+    if (!isOnline && selectedStartTime >= selectedEndTime) { Alert.alert('오류', '종료 시간은 시작 시간보다 늦어야 합니다.'); return; }
+
+    // ✨ [추가] 시간표 중복 체크 로직
+    if (!isOnline) {
+      const isOverlap = timetable.some(item => {
+        // 수정 중일 때는 자기 자신(currentEditId)과 비교하지 않음
+        if (isEditing && item.id === currentEditId) return false;
+        
+        // 온라인 강의는 시간 충돌 검사 제외
+        if (item.isOnline) return false;
+
+        const parsed = parseTime(item.time);
+        if (!parsed) return false;
+
+        // 1. 요일이 같은지 확인
+        if (parsed.day === selectedDay) {
+          // 2. 시간 겹치는지 확인 (교차 검사)
+          // (새로운 시작 시간 < 기존 종료 시간) AND (새로운 종료 시간 > 기존 시작 시간)
+          if (selectedStartTime < parsed.end && selectedEndTime > parsed.start) {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      if (isOverlap) {
+        Alert.alert(`이미 (${selectedDay})에 다른 수업이 있습니다.`);
+        return;
+      }
     }
 
     const formatTimeValue = (value: number) => {
@@ -154,57 +270,45 @@ const TimetableScreen: React.FC = () => {
 
     try {
       if (isEditing && currentEditId) {
-        const docRef = doc(db, 'timetables', currentEditId);
-        await updateDoc(docRef, {
-          courseName,
-          professor,
-          location: finalLocation,
-          time: formattedTime,
-          isOnline,
+        await updateDoc(doc(db, 'timetables', currentEditId), {
+          courseName, professor, location: finalLocation, time: formattedTime, isOnline,
         });
-        Alert.alert('성공', '시간표 항목이 수정되었습니다!');
-        setIsEditing(false); 
-        setCurrentEditId(null);
+        Alert.alert('성공', '수정되었습니다!');
+        resetForm(); 
       } else {
-        const newEntry = {
-          courseName,
-          professor,
-          location: finalLocation,
-          time: formattedTime,
-          userId: user.uid,
-          isOnline,
-        };
-        await addDoc(collection(db, 'timetables'), newEntry);
-        Alert.alert('성공', '시간표에 추가되었습니다!');
+        const randomColor = CARD_COLORS[Math.floor(Math.random() * CARD_COLORS.length)];
+        await addDoc(collection(db, 'timetables'), {
+          courseName, professor, location: finalLocation, time: formattedTime, userId: user.uid, isOnline, color: randomColor
+        });
+        Alert.alert('성공', '추가되었습니다!');
+        resetForm(); 
       }
       fetchTimetable();
-      setCourseName('');
-      setProfessor('');
-      setLocation('');
-      setIsOnline(false);
-      setSelectedDay(daysOfWeek[0]);
-      setSelectedStartTime(timeOptions[0]?.value || 9.5);
-      setSelectedEndTime(timeOptions[Math.min(1, timeOptions.length - 1)]?.value || 10.5);
-      setIsAdding(false);
-    } catch (error) {
-      console.error("데이터 저장/수정 중 오류 발생: ", error);
-      Alert.alert("오류", "시간표를 저장하지 못했습니다. 권한을 확인해주세요.");
+    } catch (e) {
+      Alert.alert("오류", "저장 실패");
     }
   };
 
   const handleDeleteEntry = async (id: string) => {
-    if (!user) {
-      Alert.alert('오류', '사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
-      return;
-    }
-    try {
-      await deleteDoc(doc(db, 'timetables', id));
-      Alert.alert("성공", "시간표 항목이 삭제되었습니다.");
-      fetchTimetable();
-    } catch (error) {
-      console.error("데이터 삭제 중 오류 발생: ", error);
-      Alert.alert("오류", "항목을 삭제하지 못했습니다. 권한을 확인해주세요.");
-    }
+    try { 
+      await deleteDoc(doc(db, 'timetables', id)); 
+      fetchTimetable(); 
+      if (isEditing && currentEditId === id) {
+        resetForm();
+      }
+    } 
+    catch { Alert.alert("오류", "삭제 실패"); }
+  };
+
+  const handleDeleteFromEdit = () => {
+    if (!currentEditId) return;
+    Alert.alert("삭제 확인", "정말 삭제하시겠습니까?", [
+      { text: "취소", style: "cancel" },
+      { text: "삭제", style: "destructive", onPress: async () => {
+          await handleDeleteEntry(currentEditId);
+          resetForm(); 
+      }}
+    ]);
   };
 
   const handleEditStart = (item: TimetableEntry) => {
@@ -217,9 +321,6 @@ const TimetableScreen: React.FC = () => {
 
     if (item.isOnline) {
       setLocation('');
-      setSelectedDay(daysOfWeek[0]);
-      setSelectedStartTime(timeOptions[0]?.value || 9.5);
-      setSelectedEndTime(timeOptions[Math.min(1, timeOptions.length - 1)]?.value || 10.5);
     } else {
       setLocation(item.location);
       const parsedTime = parseTime(item.time);
@@ -227,21 +328,14 @@ const TimetableScreen: React.FC = () => {
         setSelectedDay(parsedTime.day);
         setSelectedStartTime(parsedTime.start);
         setSelectedEndTime(parsedTime.end);
-      } else {
-        setSelectedDay(daysOfWeek[0]);
-        setSelectedStartTime(timeOptions[0]?.value || 9.5);
-        setSelectedEndTime(timeOptions[Math.min(1, timeOptions.length - 1)]?.value || 10.5);
       }
     }
   };
-  
-  // ⚠️ 주간 시간표 UI 렌더링 함수
-  const renderTimetableGrid = () => {
-    const timeBlockHeight = 50; // 1시간 블록의 높이 (px)
 
+  const renderTimetableGrid = () => {
+    const timeBlockHeight = 50; 
     return (
       <View style={styles.timetableGrid}>
-        {/* 요일 헤더 */}
         <View style={styles.dayHeaderRow}>
           <View style={styles.timeHeaderCell} />
           {daysOfWeek.map(day => (
@@ -250,8 +344,6 @@ const TimetableScreen: React.FC = () => {
             </View>
           ))}
         </View>
-        
-        {/* 시간표 그리드 */}
         {timeOptions.map((timeObj) => (
           <View key={timeObj.label} style={[styles.timeRow, { height: timeBlockHeight }]}>
             <View style={styles.timeHeaderCell}>
@@ -262,32 +354,27 @@ const TimetableScreen: React.FC = () => {
                 {timetable.filter(item => !item.isOnline).map(item => {
                   const parsedTime = parseTime(item.time);
                   if (parsedTime && parsedTime.day === day) {
-                    const lectureStartValue = parsedTime.start;
-                    const lectureEndValue = parsedTime.end;
-                    const gridTimeStartValue = timeObj.value;
-
-                    // 강의 블록을 해당 강의가 시작하는 그리드 row에서만 렌더링
-                    if (lectureStartValue === gridTimeStartValue) {
-                      const durationInHours = lectureEndValue - lectureStartValue; // 총 강의 시간
-                      const blockHeight = durationInHours * timeBlockHeight; // 블록의 실제 높이
-
+                    if (parsedTime.start === timeObj.value) {
+                      const durationInHours = parsedTime.end - parsedTime.start;
+                      const backgroundColor = item.color || getColorByString(item.courseName);
+                      
                       return (
                         <TouchableOpacity
                           key={item.id}
-                          style={[styles.courseBlock, {
-                            height: blockHeight,
-                            top: 0, // 해당 dayCell의 상단에 고정
-                            zIndex: 10, // 다른 셀들의 경계선 위로 올라오도록 zIndex 높임
-                          }]}
-                          onPress={() => Alert.alert(
-                            item.courseName,
-                            `교수: ${item.professor}\n위치: ${item.location}\n시간: ${item.time}`,
-                            [
-                              { text: "수정", onPress: () => handleEditStart(item) },
-                              { text: "삭제", onPress: () => handleDeleteEntry(item.id) },
-                              { text: "닫기" }
-                            ]
-                          )}
+                          style={[
+                            styles.courseBlock, 
+                            { 
+                              height: durationInHours * timeBlockHeight, 
+                              top: 0, 
+                              zIndex: 10,
+                              backgroundColor: backgroundColor
+                            }
+                          ]}
+                          onPress={() => Alert.alert(item.courseName, `교수: ${item.professor}\n위치: ${item.location}\n시간: ${item.time}`, [
+                            { text: "수정", onPress: () => handleEditStart(item) },
+                            { text: "삭제", onPress: () => handleDeleteEntry(item.id) },
+                            { text: "닫기" }
+                          ])}
                         >
                           <Text style={styles.courseBlockText}>{item.courseName}</Text>
                           <Text style={styles.courseBlockLocation}>{item.location}</Text>
@@ -308,40 +395,27 @@ const TimetableScreen: React.FC = () => {
   const renderOnlineClasses = () => {
     const onlineClasses = timetable.filter(item => item.isOnline);
     if (onlineClasses.length === 0) return null;
-
     return (
       <View style={styles.onlineClassesContainer}>
         <Text style={styles.onlineClassesHeader}>온라인 강의</Text>
-        {onlineClasses.map(item => (
-          <TouchableOpacity
-            key={item.id}
-            style={styles.onlineClassItem}
-            onPress={() => Alert.alert(
-              item.courseName,
-              `교수: ${item.professor}\n시간: ${item.time}`,
-              [
-                { text: "수정", onPress: () => handleEditStart(item) },
-                { text: "삭제", onPress: () => handleDeleteEntry(item.id) },
-                { text: "닫기" }
-              ]
-            )}
-          >
-            <Text style={styles.onlineClassText}>{item.courseName}</Text>
-            <Text style={styles.onlineClassSubText}>{item.professor} - {item.time}</Text>
-          </TouchableOpacity>
-        ))}
+        {onlineClasses.map(item => {
+           const backgroundColor = item.color || getColorByString(item.courseName);
+           return (
+            <TouchableOpacity
+              key={item.id}
+              style={[styles.onlineClassItem, { backgroundColor: backgroundColor, borderColor: 'transparent' }]}
+              onPress={() => handleEditStart(item)}
+            >
+              <Text style={styles.onlineClassText}>{item.courseName}</Text>
+              <Text style={styles.onlineClassSubText}>{item.professor} - {item.time}</Text>
+            </TouchableOpacity>
+           );
+        })}
       </View>
     );
   };
 
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.loadingContainer]}>
-        <ActivityIndicator size="large" color="#ff8a3d" />
-        <Text style={styles.loadingText}>시간표를 불러오는 중...</Text>
-      </View>
-    );
-  }
+  if (loading) return <View style={[styles.container, styles.loadingContainer]}><ActivityIndicator size="large" color="#0062ffff" /></View>;
 
   return (
     <View style={styles.fullScreenContainer}>
@@ -351,116 +425,83 @@ const TimetableScreen: React.FC = () => {
           <Text style={styles.addButtonText}>{isAdding ? '닫기' : '추가'}</Text>
         </TouchableOpacity>
       </View>
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 20 }]}>
+      
+      <ScrollView 
+        style={{ flex: 1 }}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 150 }]}
+      >
         {isAdding && (
           <View style={styles.inputContainer}>
             <Text style={styles.formHeader}>{isEditing ? '시간표 수정' : '시간표 추가'}</Text>
             <View style={styles.onlineContainer}>
               <Checkbox
                 value={isOnline}
-                onValueChange={(newValue) => {
-                  setIsOnline(newValue);
-                  if (newValue) {
-                    setLocation('온라인');
-                  } else {
-                    setLocation('');
-                  }
-                }}
+                onValueChange={(val) => { setIsOnline(val); if(val) setLocation('온라인'); else setLocation(''); }}
                 style={styles.checkbox}
               />
               <Text style={styles.checkboxLabel}>온라인 강의</Text>
             </View>
-            <TextInput
-              style={styles.input}
-              placeholder="과목명"
-              placeholderTextColor="#888"
-              value={courseName}
-              onChangeText={setCourseName}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="교수님"
-              placeholderTextColor="#888"
-              value={professor}
-              onChangeText={setProfessor}
-            />
+            
+            <TextInput style={styles.input} placeholder="과목명" placeholderTextColor="#888" value={courseName} onChangeText={setCourseName} />
+            <TextInput style={styles.input} placeholder="교수님" placeholderTextColor="#888" value={professor} onChangeText={setProfessor} />
             {!isOnline && (
-              <TextInput
-                style={styles.input}
-                placeholder="위치"
-                placeholderTextColor="#888"
-                value={location}
-                onChangeText={setLocation}
-              />
+              <TextInput style={styles.input} placeholder="강의실" placeholderTextColor="#888" value={location} onChangeText={setLocation} />
             )}
+
             {!isOnline && (
-              <View style={styles.timePickerContainer}>
-                <View style={[styles.pickerWrapper, styles.dayPicker]}>
-                  <Picker
-                    selectedValue={selectedDay}
-                    onValueChange={(itemValue) => setSelectedDay(itemValue)}
-                    style={styles.picker}
-                    itemStyle={styles.pickerItem}
-                  >
-                    {daysOfWeek.map((day) => (
-                      <Picker.Item key={day} label={day} value={day} />
-                    ))}
-                  </Picker>
-                </View>
-                <View style={[styles.pickerWrapper, styles.hourPicker]}>
-                  <Picker
-                    selectedValue={selectedStartTime}
-                    onValueChange={(itemValue) => setSelectedStartTime(itemValue)}
-                    style={styles.picker}
-                    itemStyle={styles.pickerItem}
-                  >
-                    {timeOptions.map((option) => (
-                      <Picker.Item key={option.label} label={option.label} value={option.value} />
-                    ))}
-                  </Picker>
-                </View>
-                <View style={[styles.pickerWrapper, styles.hourPicker]}>
-                  <Picker
-                    selectedValue={selectedEndTime}
-                    onValueChange={(itemValue) => setSelectedEndTime(itemValue)}
-                    style={styles.picker}
-                    itemStyle={styles.pickerItem}
-                  >
-                    {timeOptions.filter(option => option.value > selectedStartTime).map((option) => (
-                      <Picker.Item key={option.label} label={option.label} value={option.value} />
-                    ))}
-                  </Picker>
+              <View style={{ marginTop: 5 }}>
+                <Text style={styles.pickerLabel}>요일</Text>
+                <CustomPicker
+                  selectedValue={selectedDay}
+                  onValueChange={setSelectedDay}
+                  items={daysOfWeek.map(d => ({ label: d, value: d }))}
+                />
+                
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.pickerLabel}>시작 시간</Text>
+                    <CustomPicker
+                      selectedValue={selectedStartTime}
+                      onValueChange={setSelectedStartTime}
+                      items={timeOptions}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.pickerLabel}>종료 시간</Text>
+                    <CustomPicker
+                      selectedValue={selectedEndTime}
+                      onValueChange={setSelectedEndTime}
+                      items={timeOptions.filter(o => o.value > selectedStartTime)}
+                    />
+                  </View>
                 </View>
               </View>
             )}
+
             <TouchableOpacity style={styles.actionButton} onPress={handleAddEntry}>
-                <Text style={styles.actionButtonText}>
-                  {isEditing ? '수정 완료' : '시간표에 추가'}
-                </Text>
+              <Text style={styles.actionButtonText}>{isEditing ? '수정 완료' : '시간표 추가'}</Text>
             </TouchableOpacity>
+
             {isEditing && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.cancelButton]}
-                onPress={() => {
-                  setIsEditing(false);
-                  setCurrentEditId(null);
-                  setCourseName('');
-                  setProfessor('');
-                  setLocation('');
-                  setIsOnline(false);
-                  setSelectedDay(daysOfWeek[0]);
-                  setSelectedStartTime(timeOptions[0]?.value || 9.5);
-                  setSelectedEndTime(timeOptions[Math.min(1, timeOptions.length - 1)]?.value || 10.5);
-                  setIsAdding(false);
-                }}
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.deleteButton]} 
+                onPress={handleDeleteFromEdit}
               >
-                <Text style={styles.actionButtonText}>수정 취소</Text>
+                <Text style={styles.actionButtonText}>삭제</Text>
+              </TouchableOpacity>
+            )}
+
+            {isEditing && (
+              <TouchableOpacity style={[styles.actionButton, styles.cancelButton]} onPress={resetForm}>
+                <Text style={styles.actionButtonText}>취소</Text>
               </TouchableOpacity>
             )}
           </View>
         )}
-        {renderTimetableGrid()}
+
         {renderOnlineClasses()}
+        {renderTimetableGrid()}
+
       </ScrollView>
     </View>
   );
@@ -468,236 +509,114 @@ const TimetableScreen: React.FC = () => {
 
 export default TimetableScreen;
 
-const styles = StyleSheet.create({
-  fullScreenContainer: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    paddingTop: 0,
-  },
-  headerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 15,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#ddd',
-  },
-  pageHeader: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  addButton: {
-    backgroundColor: '#ff8a3d',
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    borderRadius: 20,
-  },
-  addButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  formHeader: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#333',
-  },
-  inputContainer: {
-    marginBottom: 20,
-    padding: 15,
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
-    elevation: 2,
-  },
-  input: {
-    backgroundColor: '#f9f9f9',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 10,
-    color: '#333',
-  },
-  onlineContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  checkbox: {
-    marginRight: 8,
-  },
-  checkboxLabel: {
-    fontSize: 16,
-  },
-  timePickerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
+const pickerStyles = StyleSheet.create({
+  iosContainer: { marginBottom: 10 },
   pickerWrapper: {
-    borderWidth: 1,
-    borderColor: '#ddd',
+    backgroundColor: "#f2f3f7",
     borderRadius: 8,
-    overflow: 'hidden',
     height: 50,
     justifyContent: 'center',
-    backgroundColor: '#f9f9f9',
-  },
-  dayPicker: {
-    flex: 1,
-    marginRight: 8,
-  },
-  hourPicker: {
-    flex: 1,
-  },
-  picker: {
-    height: 50,
-    width: '100%',
-    backgroundColor: 'transparent',
-  },
-  pickerItem: {
-    fontSize: 14,
-    height: 50,
-    color: '#333',
-  },
-  actionButton: {
-    backgroundColor: '#ff8a3d',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  actionButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  cancelButton: {
-    backgroundColor: '#ccc',
-  },
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-  },
-  loadingText: {
-    marginTop: 10,
-  },
-  // 주간 시간표 스타일
-  timetableGrid: {
-    flexDirection: 'column',
+    overflow: 'hidden', 
     borderWidth: 1,
-    borderColor: '#ddd',
-    backgroundColor: '#fff',
-    marginTop: 20,
+    borderColor: 'transparent',
   },
-  dayHeaderRow: {
-    flexDirection: 'row',
-    backgroundColor: '#f9f9f9',
-  },
-  dayHeaderCell: {
+  picker: { width: '100%', height: 50 },
+  pickerItem: { color: '#333', fontSize: 16 },
+  pickerItemText: { fontSize: 16, color: '#333' },
+  
+  modalOverlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderLeftWidth: 1,
-    borderColor: '#ddd',
+    justifyContent: 'flex-end',
+    backgroundColor: 'transparent', 
   },
-  dayHeaderText: {
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  timeHeaderCell: {
-    width: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderRightWidth: 1,
-    borderColor: '#ddd',
-  },
-  timeHeaderText: {
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  timeRow: {
-    flexDirection: 'row',
-    minHeight: 50,
-    borderTopWidth: 1,
-    borderColor: '#ddd',
-  },
-  dayCell: {
-    flex: 1,
-    borderLeftWidth: 1,
-    borderColor: '#ddd',
-    position: 'relative',
-  },
-  courseBlock: {
-    position: 'absolute',
-    width: '100%',
-    left: 0,
-    backgroundColor: '#add8e6',
-    padding: 5,
-    borderRadius: 5,
-    zIndex: 1,
-  },
-  courseBlockText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 10,
-  },
-  courseBlockLocation: {
-    color: '#fff',
-    fontSize: 8,
-  },
-  // 온라인 강의 스타일
-  onlineClassesContainer: {
-    marginTop: 20,
-    padding: 15,
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+  modalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20, 
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
-    shadowRadius: 1,
-    elevation: 2,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  onlineClassesHeader: {
-    fontSize: 20,
+  modalHeader: {
+    height: 45,
+    backgroundColor: '#f2f3f7',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  modalDoneText: {
+    color: '#0062ffff',
     fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#333',
-  },
-  onlineClassItem: {
-    backgroundColor: '#f0f8ff',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#b0e0e6',
-  },
-  onlineClassText: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#444',
   },
-  onlineClassSubText: {
-    fontSize: 14,
-    color: '#666',
+});
+
+const styles = StyleSheet.create({
+  fullScreenContainer: { flex: 1, backgroundColor: '#f5f5f5' },
+  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 15, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#ddd' },
+  pageHeader: { fontSize: 24, fontWeight: 'bold', color: '#0062ffff' },
+  addButton: { backgroundColor: '#0062ffff', paddingVertical: 8, paddingHorizontal: 15, borderRadius: 20 },
+  addButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  scrollContent: { padding: 20, paddingBottom: 40 },
+  formHeader: { fontSize: 20, fontWeight: 'bold', marginBottom: 10, color: '#333' },
+  inputContainer: { marginBottom: 20, padding: 15, backgroundColor: '#fff', borderRadius: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1, elevation: 2 },
+  
+  input: { 
+    height: 50,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    backgroundColor: "#f2f3f7",
+    marginBottom: 10,
+    fontSize: 16,
+    color: '#333',
+    borderWidth: 0,
   },
+  
+  onlineContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
+  checkbox: { marginRight: 8 },
+  checkboxLabel: { fontSize: 16 },
+  
+  pickerLabel: { fontSize: 14, color: '#555', fontWeight: 'bold', marginBottom: 5, marginLeft: 2 },
+
+  actionButton: { backgroundColor: '#0062ffff', padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 },
+  actionButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  
+  deleteButton: { backgroundColor: '#ff5c5c' },
+  cancelButton: { backgroundColor: '#ccc' },
+  container: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' },
+  
+  timetableGrid: { flexDirection: 'column', borderWidth: 1, borderColor: '#ddd', backgroundColor: '#fff', marginTop: 20 },
+  dayHeaderRow: { flexDirection: 'row', backgroundColor: '#f9f9f9' },
+  dayHeaderCell: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 10, borderLeftWidth: 1, borderColor: '#ddd' },
+  dayHeaderText: { fontWeight: 'bold', fontSize: 12 },
+  timeHeaderCell: { width: 60, justifyContent: 'center', alignItems: 'center', paddingVertical: 10, borderRightWidth: 1, borderColor: '#ddd' },
+  timeHeaderText: { fontWeight: 'bold', fontSize: 12 },
+  timeRow: { flexDirection: 'row', minHeight: 50, borderTopWidth: 1, borderColor: '#ddd' },
+  dayCell: { flex: 1, borderLeftWidth: 1, borderColor: '#ddd', position: 'relative' },
+  
+  courseBlock: { 
+    position: 'absolute', 
+    width: '100%', 
+    left: 0, 
+    padding: 5, 
+    borderRadius: 5, 
+    zIndex: 1 
+  },
+  
+  courseBlockText: { color: '#333', fontWeight: 'bold', fontSize: 10 },
+  courseBlockLocation: { color: '#333', fontSize: 8 },
+  
+  onlineClassesContainer: { marginTop: 0, marginBottom: 20, padding: 15, backgroundColor: '#fff', borderRadius: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1, elevation: 2 },
+  onlineClassesHeader: { fontSize: 20, fontWeight: 'bold', marginBottom: 10, color: '#333' },
+  
+  onlineClassItem: { padding: 10, borderRadius: 8, marginBottom: 8, borderWidth: 0 },
+  onlineClassText: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+  onlineClassSubText: { fontSize: 14, color: '#555' },
 });

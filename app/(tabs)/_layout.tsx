@@ -2,17 +2,16 @@
 
 import Ionicons from '@expo/vector-icons/Ionicons'; // Ionicons 임포트
 import { Tabs } from 'expo-router';
-import React from 'react';
 import { Platform } from 'react-native';
 
 // ⚠️ 프로젝트에 HapticTab, TabBarBackground가 없다면 주석 처리하거나 삭제하세요.
 // 이 예시에서는 오류 방지를 위해 임포트 주석 처리 및 사용 제거합니다.
 // import { HapticTab } from '@/components/HapticTab'; 
 // import TabBarBackground from '@/components/ui/TabBarBackground';
-import { useColorScheme } from '@/hooks/useColorScheme'; // useColorScheme 임포트
+//import { useColorScheme } from '@/hooks/useColorScheme'; // useColorScheme 임포트
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme(); // useColorScheme 사용
+  //const colorScheme = useColorScheme(); // useColorScheme 사용
 
   return (
     <Tabs

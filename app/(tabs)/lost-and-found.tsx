@@ -3,7 +3,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
-import React, { memo, useCallback, useEffect, useState } from 'react'; // ✨ memo 추가
+import { memo, useCallback, useEffect, useState } from 'react'; // ✨ memo 추가
 import {
     ActivityIndicator,
     BackHandler,
@@ -59,6 +59,7 @@ const ItemCard = memo(({ item, onPress }: { item: LostItem, onPress: (id: string
       </TouchableOpacity>
     );
 });
+ItemCard.displayName = "ItemCard";
 
 export default function LostAndFoundScreen() {
   const insets = useSafeAreaInsets();
@@ -114,7 +115,7 @@ export default function LostAndFoundScreen() {
 
   const handlePressItem = useCallback((id: string) => {
       router.push(`/lost-item/${id}`);
-  }, []);
+  }, [router]);
 
   const renderItem = useCallback(({ item }: { item: LostItem }) => (
       <ItemCard item={item} onPress={handlePressItem} />

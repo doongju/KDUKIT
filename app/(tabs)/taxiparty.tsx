@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { arrayUnion, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import React, { memo, useCallback, useEffect, useState } from 'react'; // ✨ memo, useCallback 추가
+import { memo, useCallback, useEffect, useState } from 'react'; // ✨ memo, useCallback 추가
 import {
   ActivityIndicator,
   Alert,
@@ -86,6 +86,7 @@ const PartyItem = memo(({ item, user, onPressProfile, onJoin, onChat, onFinish, 
       </View>
     );
 });
+PartyItem.displayName = "PartyItem";
 
 export default function TaxiPartyScreen() {
   const insets = useSafeAreaInsets();

@@ -16,13 +16,12 @@ import {
   updateDoc,
   where
 } from 'firebase/firestore';
-import React, { memo, useCallback, useEffect, useState } from 'react'; // ✨ memo 추가
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'; // ✨ useMemo 추가
 import {
   ActivityIndicator,
   Alert,
   BackHandler,
   FlatList,
-  Image,
   Modal,
   Platform,
   RefreshControl,
@@ -32,7 +31,7 @@ import {
   TextInput,
   TouchableOpacity,
   View
-} from 'react-native';
+} from 'react-native'; // 🚨 Image 제거 (expo-image와 충돌 방지)
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
@@ -55,7 +54,8 @@ interface ClubPost {
 }
 
 // ✨ [최적화 1] 리스트 아이템 분리 및 메모이제이션
-const ClubItem = memo(({ item, onPress }: { item: ClubPost, onPress: (post: ClubPost) => void }) => {
+// 1. 먼저 컴포넌트 로직을 ClubItemBase로 정의합니다.
+const ClubItemBase = ({ item, onPress }: { item: ClubPost, onPress: (post: ClubPost) => void }) => {
   const isFull = item.currentMembers.length >= item.memberLimit;
   
   return (
@@ -63,7 +63,7 @@ const ClubItem = memo(({ item, onPress }: { item: ClubPost, onPress: (post: Club
       <View style={styles.cardContent}>
         {item.imageUrl ? (
           <Image 
-            source={item.imageUrl} 
+            source={{ uri: item.imageUrl }} // expo-image는 uri 객체 혹은 require 필요
             style={styles.cardImage} 
             contentFit="cover"
             transition={200} 
@@ -91,9 +91,9 @@ const ClubItem = memo(({ item, onPress }: { item: ClubPost, onPress: (post: Club
   );
 };
 
-// 여기서 이름을 명시적으로 부여하고 memo를 적용합니다.
+// 2. 그 다음 memo로 감싸서 내보냅니다.
 const ClubItem = memo(ClubItemBase);
-ClubItem.displayName = 'ClubItem'; // ✨ 이 줄이 에러를 확실하게 해결합니다.
+ClubItem.displayName = 'ClubItem';
 
 // --- Main Screen ---
 export default function ClubListScreen() {
@@ -110,6 +110,9 @@ export default function ClubListScreen() {
   const [selectedPost, setSelectedPost] = useState<ClubPost | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   
+  // ✨ [에러 해결] 누락된 state 추가
+  const [isImageViewerVisible, setIsImageViewerVisible] = useState(false);
+
   const [selectedFilter, setSelectedFilter] = useState('전체');
   const [isSearching, setIsSearching] = useState(false); 
   const [searchQuery, setSearchQuery] = useState('');   
@@ -172,6 +175,7 @@ export default function ClubListScreen() {
   }, []);
 
   // [최적화] 검색 필터링 useMemo 적용
+  // ✨ [에러 해결] 중복 선언 제거 및 구문 오류 수정
   const displayedPosts = useMemo(() => {
     if (!searchQuery.trim()) return clubPosts;
     const lowerQuery = searchQuery.toLowerCase();
@@ -179,8 +183,7 @@ export default function ClubListScreen() {
       post.clubName.toLowerCase().includes(lowerQuery) || 
       post.description.toLowerCase().includes(lowerQuery)
     );
-  };
-  const displayedPosts = getFilteredPosts();
+  }, [searchQuery, clubPosts]); // ✨ 닫는 괄호 수정
 
   // 이벤트 핸들러
   const handlePressPost = useCallback((post: ClubPost) => {
@@ -359,7 +362,7 @@ export default function ClubListScreen() {
 
       {/* ✨ [최적화 3] FlatList 성능 옵션 적용 */}
       <FlatList
-        data={getFilteredPosts()} 
+        data={displayedPosts} // ✨ [에러 해결] getFilteredPosts() -> displayedPosts 로 변경
         renderItem={renderItem} 
         keyExtractor={item => item.id}
         contentContainerStyle={styles.flatListContent}
@@ -393,7 +396,7 @@ export default function ClubListScreen() {
                 // ✨ 이미지 확대 기능 연결
                 <TouchableOpacity onPress={() => setIsImageViewerVisible(true)}>
                   <Image 
-                    source={selectedPost.imageUrl} 
+                    source={{ uri: selectedPost.imageUrl }} 
                     style={modalStyles.modalImage} 
                     contentFit="cover"
                   />
@@ -479,7 +482,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#fff', borderRadius: 10, marginBottom: 10, padding: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 3 },
   cardContent: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   noImagePlaceholder: { width: 80, height: 80, borderRadius: 8, backgroundColor: '#f5f5f5', justifyContent: 'center', alignItems: 'center', marginRight: 15, borderWidth: 1, borderColor: '#ddd' },
-  cardImage: { width: 80, height: 80, borderRadius: 8, marginRight: 15, resizeMode: 'cover' },
+  cardImage: { width: 80, height: 80, borderRadius: 8, marginRight: 15 }, // resizeMode는 expo-image에서 contentFit으로 대체
   textContainer: { flex: 1 },
   clubName: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 5 },
   tagContainer: { flexDirection: 'row', marginBottom: 5 },
@@ -487,22 +490,31 @@ const styles = StyleSheet.create({
     backgroundColor: '#e0f7fa', color: '#00796b', fontSize: 12, 
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, marginRight: 8 
   },
-  // [수정] View 스타일 (fontSize 제거)
   memberStatusTag: { 
     backgroundColor: '#ffe0b2', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5 
   },
   memberStatusFull: { backgroundColor: '#ffcdd2' },
   memberStatusText: { fontSize: 12, color: '#333' },
   description: { fontSize: 14, color: '#555', marginBottom: 5 },
-  fab: {
-    position: 'absolute', bottom: Platform.OS === 'ios' ? 90 : 70, right: 20,
-    backgroundColor: '#0062ffff', borderRadius: 30, width: 120, height: 50,
-    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5,
+  // ✨ [수정] fab 중복 정의 제거 및 통합
+  fab: { 
+    position: 'absolute', 
+    bottom: Platform.OS === 'ios' ? 90 : 20, 
+    right: 20, 
+    backgroundColor: '#0062ffff', 
+    borderRadius: 30, 
+    width: 120, 
+    height: 50, 
+    flexDirection: 'row', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 2 }, 
+    shadowOpacity: 0.25, 
+    shadowRadius: 3.84, 
+    elevation: 5, 
+    zIndex: 9999 
   },
-  // ✨ [수정] iOS 탭바 가림 방지 (bottom: 110)
-  fab: { position: 'absolute', bottom: Platform.OS === 'ios' ? 90 : 20, right: 20, backgroundColor: '#0062ffff', borderRadius: 30, width: 120, height: 50, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5, zIndex: 9999 },
   fabText: { color: 'white', fontSize: 18, fontWeight: 'bold', marginLeft: 5 },
   emptyListContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 50 },
   emptyListText: { fontSize: 16, color: '#666', marginTop: 10 },

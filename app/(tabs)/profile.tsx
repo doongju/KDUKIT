@@ -34,7 +34,7 @@ interface BlockedUserInfo {
 
 export default function ProfileScreen() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true); // 초기 로딩
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   
   const [blockedList, setBlockedList] = useState<BlockedUserInfo[]>([]);
@@ -46,17 +46,13 @@ export default function ProfileScreen() {
   const user = auth.currentUser;
   const insets = useSafeAreaInsets();
 
-  // 유저가 없으면 로딩 (이건 로그아웃 직후라 괜찮음)
-  if (!user) {
-    return (
-        <View style={styles.center}>
-            <ActivityIndicator size="large" color="#0062ffff" />
-        </View>
-    );
-  }
-
-  // 1. 내 프로필 실시간 감지
+  // ✨ [수정 1] useEffect를 조건문(return)보다 위로 올리고, 내부에서 user 체크를 합니다.
   useEffect(() => {
+    if (!user) {
+        setLoading(false);
+        return;
+    }
+
     const userDocRef = doc(db, "users", user.uid);
     
     const unsubscribeProfile = onSnapshot(userDocRef, (docSnap) => {
@@ -70,20 +66,19 @@ export default function ProfileScreen() {
                 blockedUsers: data.blockedUsers || []
             });
         } else {
-            // ✨ [핵심] 문서가 없어도 로딩을 끝내야 화면이 나옴
             setUserProfile(null); 
         }
         setLoading(false);
     }, (error) => {
         if (error.code === 'permission-denied') return;
         console.error("Profile listener error:", error);
-        setLoading(false); // 에러나도 로딩 끝냄
+        setLoading(false);
     });
 
     return () => unsubscribeProfile();
   }, [user]);
 
-  // ... (fetchBlockedUsers, toggleBlockedSection, handleUnblock 등 함수들은 기존과 동일) ...
+  // ✨ [수정 2] useCallback도 위로 올리고, catch문의 'e' 경고 해결
   const fetchBlockedUsers = useCallback(async (blockedIds: string[]) => {
     if (!blockedIds || blockedIds.length === 0) { setBlockedList([]); return; }
     setLoadingBlocked(true);
@@ -104,7 +99,7 @@ export default function ProfileScreen() {
                     }
                     return { uid, displayName: name };
                 }
-            } catch (e) { return null; }
+            } catch { return null; } // 'e' 제거하여 경고 해결
             return null;
         });
         const results = await Promise.all(promises);
@@ -160,6 +155,7 @@ export default function ProfileScreen() {
     ]);
   };
 
+  // ✨ [수정 3] useCallback 위치 이동 (조건부 렌더링 전)
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     if (showBlockedSection && userProfile?.blockedUsers) {
@@ -167,6 +163,7 @@ export default function ProfileScreen() {
     } else { setTimeout(() => setRefreshing(false), 800); }
   }, [showBlockedSection, userProfile, fetchBlockedUsers]);
 
+  // ✨ [수정 4] useMemo 위치 이동 (조건부 렌더링 전)
   const scoreInfo = useMemo(() => {
     const score = userProfile?.trustScore ?? 50;
     let info = { color: '#ff3b30', icon: 'warning', label: '주의 요망 😱', bg: '#ffebee' };
@@ -179,12 +176,20 @@ export default function ProfileScreen() {
 
   const { color, icon, label, bg, score, barWidth } = scoreInfo;
 
+  // ✨ [수정 5] "Early Return" (조건부 렌더링)을 모든 Hook 선언 "이후"로 이동
+  if (!user) {
+    return (
+        <View style={styles.center}>
+            <ActivityIndicator size="large" color="#0062ffff" />
+        </View>
+    );
+  }
+
   return (
     <ScrollView 
         style={styles.container}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#0062ffff']} />}
     >
-        {/* ✨ [핵심 수정] 헤더는 데이터 로딩 여부와 상관없이 무조건 렌더링 */}
         <View style={[styles.headerContainer, { paddingTop: insets.top }]}> 
             <Text style={styles.header}>내 정보</Text>
             <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
@@ -193,20 +198,17 @@ export default function ProfileScreen() {
             </TouchableOpacity>
         </View>
 
-        {/* ✨ 데이터가 로딩 중이거나 없을 때의 처리 분기 */}
         {loading ? (
             <View style={{ marginTop: 100 }}>
                 <ActivityIndicator size="large" color="#0062ffff" />
             </View>
         ) : !userProfile ? (
-            // 유저 데이터가 없는 경우 (임시 계정 등)
             <View style={styles.errorCard}>
                 <Ionicons name="alert-circle-outline" size={50} color="#ff5c5c" />
                 <Text style={styles.errorText}>사용자 정보를 불러올 수 없습니다.</Text>
                 <Text style={styles.errorSubText}>회원가입이 정상적으로 되지 않았거나{'\n'}데이터가 삭제된 계정입니다.</Text>
             </View>
         ) : (
-            // 정상 데이터가 있을 때
             <>
                 <View style={styles.profileCard}>
                     <View style={styles.avatarContainer}>

@@ -17,7 +17,7 @@ import {
   updateDoc,
   where
 } from 'firebase/firestore';
-import { useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   BackHandler,
@@ -90,6 +90,7 @@ const MarketItem = memo(({ item, onPress, onToggleWish, onProfilePress, isWished
     // 리렌더링 방지 조건: 데이터가 같고 찜 상태가 같으면 다시 안 그림
     return prev.item === next.item && prev.isWished === next.isWished;
 });
+MarketItem.displayName = "MarketItem";
 
 export default function MarketListScreen() {
   const insets = useSafeAreaInsets();
