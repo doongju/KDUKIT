@@ -56,4 +56,4 @@ exports.sendVerificationCode = functions.https.onCall(async (data, context) => {
     console.error("❌ 메일 전송 에러:", error);
     throw new functions.https.HttpsError("internal", "메일 전송 실패", error.message);
   }
-});
+}); 

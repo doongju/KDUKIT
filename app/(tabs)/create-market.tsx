@@ -6,7 +6,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react'; // useCallback 추가
 import {
   ActivityIndicator,
   Alert,
@@ -42,16 +42,15 @@ export default function CreateMarketScreen() {
 
   const [isModalVisible, setIsModalVisible] = useState(false);
 
-  // 초기화 및 데이터 채우기
+  // 초기화 및 데이터 로드
   useEffect(() => {
     if (params.postId) {
-      // 수정 모드
       setTitle(params.initialTitle as string || '');
       setDescription(params.initialDescription as string || '');
       setCategory(params.initialCategory as string || '전공도서');
       setPrice(params.initialPrice as string || '');
       
-      // 기존 이미지 세팅
+      // 기존 이미지 세팅 (http 체크)
       const initImg = params.initialImageUrl as string;
       if (initImg && initImg.startsWith('http')) {
           setImageUrl(initImg);
@@ -59,7 +58,6 @@ export default function CreateMarketScreen() {
           setImageUrl(null);
       }
     } else {
-      // 새 글 모드
       resetForm();
     }
   }, [params.postId, params.t]);
@@ -73,9 +71,9 @@ export default function CreateMarketScreen() {
   };
 
   const pickImage = async () => {
-    if (!currentUser) return;
+    if (!currentUser) { Alert.alert("로그인 필요", "로그인이 필요합니다."); return; }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') return Alert.alert('권한 필요', '사진 접근 권한이 필요합니다.');
+    if (status !== 'granted') { Alert.alert('권한 필요', '사진 접근 권한이 필요합니다.'); return; }
 
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -89,10 +87,7 @@ export default function CreateMarketScreen() {
 
   const uploadImage = async (uri: string): Promise<string | null> => {
     if (!currentUser) return null;
-    
-    if (uri.startsWith('http') || uri.startsWith('https')) {
-        return uri;
-    }
+    if (uri.startsWith('http') || uri.startsWith('https')) return uri;
 
     setUploadingImage(true);
     try {
@@ -111,11 +106,11 @@ export default function CreateMarketScreen() {
   };
 
   const handleSave = async () => {
-    if (!currentUser) return Alert.alert("로그인 필요", "로그인이 필요합니다.");
-    if (!title.trim() || !description.trim() || !price.trim()) return Alert.alert("필수 입력", "모든 필드를 채워주세요.");
+    if (!currentUser) { Alert.alert("로그인 필요", "로그인이 필요합니다."); return; }
+    if (!title.trim() || !description.trim() || !price.trim()) { Alert.alert("필수 입력", "모든 필드를 채워주세요."); return; }
 
     const priceNumber = parseInt(price.replace(/[^0-9]/g, ''), 10); 
-    if (isNaN(priceNumber)) return Alert.alert("가격 오류", "올바른 가격을 입력해주세요.");
+    if (isNaN(priceNumber)) { Alert.alert("가격 오류", "올바른 가격을 입력해주세요."); return; }
 
     setIsSubmitting(true);
     
@@ -125,7 +120,8 @@ export default function CreateMarketScreen() {
       finalImageUrl = await uploadImage(imageUrl);
       if (!finalImageUrl) { 
           setIsSubmitting(false); 
-          return Alert.alert("오류", "이미지 업로드 실패"); 
+          Alert.alert("오류", "이미지 업로드 실패"); 
+          return; 
       }
     }
 
@@ -142,7 +138,6 @@ export default function CreateMarketScreen() {
       };
 
       if (params.postId) {
-        // 수정
         const postRef = doc(db, 'marketPosts', params.postId as string);
         await updateDoc(postRef, {
             title: postData.title,
@@ -154,7 +149,6 @@ export default function CreateMarketScreen() {
         });
         Alert.alert("수정 완료", "상품 정보가 수정되었습니다.");
       } else {
-        // 생성
         await addDoc(collection(db, 'marketPosts'), {
           ...postData,
           createdAt: serverTimestamp(),
@@ -164,11 +158,11 @@ export default function CreateMarketScreen() {
       router.replace('/(tabs)/marketlist');
 
     } catch (error: any) {
+      // 차단된 사용자에게 친절한 메시지 표시
       if (error.code === 'permission-denied' || error.message.includes('permission-denied')) {
-        console.log("Market post blocked due to reports.");
         Alert.alert("이용 제한 🚫", "신고 누적(5회 이상)으로 인해 게시글 작성이 제한되었습니다.\n관리자에게 문의해주세요.");
       } else {
-        console.error("Error saving market post:", error);
+        console.error("Save error:", error);
         Alert.alert("실패", "저장 중 오류가 발생했습니다.");
       }
     } finally {
