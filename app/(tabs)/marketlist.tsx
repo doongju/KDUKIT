@@ -17,7 +17,7 @@ import {
   updateDoc,
   where
 } from 'firebase/firestore';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useState } from 'react'; // ✨ memo 추가
 import {
   Alert,
   BackHandler,
@@ -36,7 +36,6 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
-// 컴포넌트 임포트
 import ImageView from 'react-native-image-viewing';
 import BuyerReviewModal from '../../components/BuyerReviewModal';
 import ReviewModal from '../../components/ReviewModal';
@@ -54,6 +53,43 @@ interface MarketPost {
   buyerId?: string;
   isBuyerReviewed?: boolean;
 }
+
+// ✨ [최적화 1] 리스트 아이템 컴포넌트 분리 & 메모이제이션
+// (스크롤 할 때마다 불필요하게 다시 그려지는 것을 방지)
+const MarketItem = memo(({ item, onPress, onToggleWish, onProfilePress, isWished }: any) => {
+    let statusColor = '#0062ffff';
+    if (item.status === '예약중') statusColor = '#ffc107';
+    if (item.status === '판매완료') statusColor = '#dc3545';
+
+    return (
+      <TouchableOpacity style={styles.card} onPress={() => onPress(item)} activeOpacity={0.8}>
+        {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.cardImage} /> : 
+          <View style={styles.noImage}><Ionicons name="image-outline" size={30} color="#ccc" /></View>}
+        
+        <View style={styles.textContainer}>
+          <View style={styles.titleRow}>
+              <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
+              <TouchableOpacity onPress={() => onToggleWish(item.id)} style={styles.wishButton}>
+                  <Ionicons name={isWished ? "heart" : "heart-outline"} size={22} color={isWished ? "#ff3b30" : "#aaa"} />
+              </TouchableOpacity>
+          </View>
+          
+          <Text style={styles.price}>{item.price.toLocaleString()}원</Text>
+          <View style={styles.infoRow}>
+              <Text style={styles.category}>{item.category}</Text>
+              <Text style={[styles.status, { color: statusColor }]}>{item.status}</Text>
+          </View>
+          <TouchableOpacity style={styles.profileLink} onPress={() => onProfilePress(item.creatorId)}>
+              <Ionicons name="person-circle-outline" size={16} color="#555" />
+              <Text style={styles.profileLinkText}>판매자 신뢰도</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+}, (prev, next) => {
+    // 리렌더링 방지 조건: 데이터가 같고 찜 상태가 같으면 다시 안 그림
+    return prev.item === next.item && prev.isWished === next.isWished;
+});
 
 export default function MarketListScreen() {
   const insets = useSafeAreaInsets();
@@ -75,11 +111,10 @@ export default function MarketListScreen() {
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
   const [pendingReviewPost, setPendingReviewPost] = useState<MarketPost | null>(null);
-
   const [isImageViewerVisible, setIsImageViewerVisible] = useState(false);
-
   const [myWishlist, setMyWishlist] = useState<string[]>([]);
 
+  // 뒤로가기 핸들링
   useEffect(() => {
     const backAction = () => {
       if (isImageViewerVisible) { setIsImageViewerVisible(false); return true; }
@@ -94,6 +129,7 @@ export default function MarketListScreen() {
     return () => backHandler.remove();
   }, [isSearching, modalVisible, profileUserId, reviewModalVisible, pendingReviewPost, isImageViewerVisible]);
 
+  // 데이터 로드
   const fetchPosts = useCallback(() => {
     if (!currentUser) { setLoading(false); setPosts([]); return () => {}; }
     setLoading(true);
@@ -115,6 +151,7 @@ export default function MarketListScreen() {
 
   useEffect(() => { const unsub = fetchPosts(); return () => unsub(); }, [fetchPosts]);
 
+  // 구매자 리뷰 대기 체크
   useEffect(() => {
     if (!currentUser) return;
     const q = query(
@@ -134,33 +171,37 @@ export default function MarketListScreen() {
     return () => unsubscribe();
   }, [currentUser]);
 
+  // 찜 목록 실시간 감지
   useEffect(() => {
     if (!currentUser) return;
     const userRef = doc(db, 'users', currentUser.uid);
     const unsubscribe = onSnapshot(userRef, (docSnap) => {
         if (docSnap.exists()) {
-            const data = docSnap.data();
-            setMyWishlist(data.wishlist || []);
+            setMyWishlist(docSnap.data().wishlist || []);
         }
     });
     return () => unsubscribe();
   }, [currentUser]);
 
-  const handleToggleWish = async (postId: string) => {
+  // 핸들러들 (useCallback으로 감싸서 최적화)
+  const handleToggleWish = useCallback(async (postId: string) => {
     if (!currentUser) return;
     const userRef = doc(db, 'users', currentUser.uid);
     const isWished = myWishlist.includes(postId);
-
     try {
-        if (isWished) {
-            await updateDoc(userRef, { wishlist: arrayRemove(postId) });
-        } else {
-            await updateDoc(userRef, { wishlist: arrayUnion(postId) });
-        }
-    } catch (e) {
-        console.error("Wishlist error:", e);
-    }
-  };
+        if (isWished) await updateDoc(userRef, { wishlist: arrayRemove(postId) });
+        else await updateDoc(userRef, { wishlist: arrayUnion(postId) });
+    } catch (e) { console.error(e); }
+  }, [currentUser, myWishlist]);
+
+  const handlePressItem = useCallback((item: MarketPost) => {
+      setSelectedPost(item);
+      setModalVisible(true);
+  }, []);
+
+  const handleProfilePress = useCallback((creatorId: string) => {
+      setProfileUserId(creatorId);
+  }, []);
 
   const getFilteredPosts = () => {
     if (!searchQuery.trim()) return posts;
@@ -168,6 +209,7 @@ export default function MarketListScreen() {
     return posts.filter(p => p.title.toLowerCase().includes(lower) || p.description.toLowerCase().includes(lower));
   };
 
+  // ... (Create, Delete, Edit, StatusChange, Chat 핸들러들은 기존과 동일하게 유지)
   const handleCreate = () => {
     if (!currentUser) return Alert.alert("로그인 필요", "로그인이 필요합니다.");
     router.push({ pathname: '/(tabs)/create-market', params: { mode: 'new', t: Date.now().toString() } });
@@ -273,36 +315,16 @@ export default function MarketListScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: MarketPost }) => {
-    let statusColor = '#0062ffff';
-    if (item.status === '예약중') statusColor = '#ffc107';
-    if (item.status === '판매완료') statusColor = '#dc3545';
-    const isWished = myWishlist.includes(item.id);
-
-    return (
-      <TouchableOpacity style={styles.card} onPress={() => { setSelectedPost(item); setModalVisible(true); }} activeOpacity={0.8}>
-        {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.cardImage} /> : 
-          <View style={styles.noImage}><Ionicons name="image-outline" size={30} color="#ccc" /></View>}
-        <View style={styles.textContainer}>
-          <View style={styles.titleRow}>
-              <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
-              <TouchableOpacity onPress={() => handleToggleWish(item.id)} style={styles.wishButton}>
-                  <Ionicons name={isWished ? "heart" : "heart-outline"} size={22} color={isWished ? "#ff3b30" : "#aaa"} />
-              </TouchableOpacity>
-          </View>
-          <Text style={styles.price}>{item.price.toLocaleString()}원</Text>
-          <View style={styles.infoRow}>
-              <Text style={styles.category}>{item.category}</Text>
-              <Text style={[styles.status, { color: statusColor }]}>{item.status}</Text>
-          </View>
-          <TouchableOpacity style={styles.profileLink} onPress={() => setProfileUserId(item.creatorId)}>
-              <Ionicons name="person-circle-outline" size={16} color="#555" />
-              <Text style={styles.profileLinkText}>판매자 신뢰도</Text>
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    );
-  };
+  // ✨ [최적화 2] 렌더 함수 (메모이제이션 컴포넌트 사용)
+  const renderItem = useCallback(({ item }: { item: MarketPost }) => (
+      <MarketItem 
+        item={item} 
+        onPress={handlePressItem} 
+        onToggleWish={handleToggleWish}
+        onProfilePress={handleProfilePress}
+        isWished={myWishlist.includes(item.id)}
+      />
+  ), [handlePressItem, handleToggleWish, handleProfilePress, myWishlist]);
 
   const isMyPost = currentUserId && selectedPost?.creatorId === currentUserId;
   let modalStatusColor = '#0062ffff';
@@ -336,6 +358,7 @@ export default function MarketListScreen() {
         </View>
       )}
 
+      {/* ✨ [최적화 3] FlatList 성능 옵션 적용 */}
       <FlatList 
         data={getFilteredPosts()} 
         renderItem={renderItem} 
@@ -343,6 +366,10 @@ export default function MarketListScreen() {
         contentContainerStyle={{padding: 15, paddingBottom: 100}}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 1000); }} />}
         ListEmptyComponent={<View style={{alignItems:'center', marginTop:50}}><Text style={{color:'#999'}}>{searchQuery ? "검색 결과가 없습니다." : "등록된 상품이 없습니다."}</Text></View>}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === 'android'}
       />
 
       <TouchableOpacity style={styles.fab} onPress={handleCreate}>
@@ -350,81 +377,83 @@ export default function MarketListScreen() {
         <Text style={styles.fabText}>판매하기</Text>
       </TouchableOpacity>
 
-      {/* 상품 상세 모달 */}
+      {/* 상품 상세 모달 (높이 수정됨) */}
       <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
-        <View style={styles.modalContainer}>
-            {/* ✨ 헤더: X 버튼 왼쪽 배치 */}
-            <View style={styles.modalHeader}>
-                <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
-                    <Ionicons name="close" size={32} color="#333" />
-                </TouchableOpacity>
-            </View>
-
-            <ScrollView contentContainerStyle={{padding:20}}>
-                {selectedPost?.imageUrl && (
-                    <TouchableOpacity onPress={() => setIsImageViewerVisible(true)}>
-                        <Image source={{ uri: selectedPost.imageUrl }} style={styles.modalImage} />
+        <View style={styles.overlay}>
+            <View style={styles.modalContainer}>
+                {/* 헤더 (X 버튼) */}
+                <View style={styles.modalHeader}>
+                    <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
+                        <Ionicons name="close" size={32} color="#333" />
                     </TouchableOpacity>
-                )}
-                
-                <View style={styles.modalInfoRow}>
-                    <Text style={styles.modalCategory}>{selectedPost?.category}</Text>
-                    <Text style={[styles.modalStatus, { color: modalStatusColor }]}>{selectedPost?.status}</Text>
                 </View>
 
-                <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'flex-start'}}>
-                    <Text style={styles.modalTitle}>{selectedPost?.title}</Text>
-                    {selectedPost && (
-                        <TouchableOpacity onPress={() => handleToggleWish(selectedPost.id)}>
-                             <Ionicons name={myWishlist.includes(selectedPost.id) ? "heart" : "heart-outline"} size={28} color={myWishlist.includes(selectedPost.id) ? "#ff3b30" : "#aaa"} />
+                <ScrollView contentContainerStyle={{paddingHorizontal:20, paddingBottom: 20}}>
+                    {selectedPost?.imageUrl && (
+                        <TouchableOpacity onPress={() => setIsImageViewerVisible(true)}>
+                            <Image source={{ uri: selectedPost.imageUrl }} style={styles.modalImage} />
+                        </TouchableOpacity>
+                    )}
+                    
+                    <View style={styles.modalInfoRow}>
+                        <Text style={styles.modalCategory}>{selectedPost?.category}</Text>
+                        <Text style={[styles.modalStatus, { color: modalStatusColor }]}>{selectedPost?.status}</Text>
+                    </View>
+
+                    <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'flex-start'}}>
+                        <Text style={styles.modalTitle}>{selectedPost?.title}</Text>
+                        {selectedPost && (
+                            <TouchableOpacity onPress={() => handleToggleWish(selectedPost.id)}>
+                                <Ionicons name={myWishlist.includes(selectedPost.id) ? "heart" : "heart-outline"} size={28} color={myWishlist.includes(selectedPost.id) ? "#ff3b30" : "#aaa"} />
+                            </TouchableOpacity>
+                        )}
+                    </View>
+
+                    <Text style={styles.modalPrice}>{selectedPost?.price.toLocaleString()}원</Text>
+                    
+                    <TouchableOpacity 
+                        style={styles.modalProfileBtn} 
+                        onPress={() => setProfileUserId(selectedPost?.creatorId || null)}
+                    >
+                        <Ionicons name="person-circle" size={20} color="#0062ffff" />
+                        <Text style={styles.modalProfileText}>판매자 정보 보기</Text>
+                    </TouchableOpacity>
+
+                    <Text style={styles.modalDesc}>{selectedPost?.description}</Text>
+                </ScrollView>
+                
+                <View style={styles.bottomBar}>
+                    {isMyPost ? (
+                        <>
+                            <TouchableOpacity 
+                            style={[
+                                styles.actionBtn, 
+                                { backgroundColor: selectedPost?.status === '판매중' ? '#17a2b8' : (selectedPost?.status === '예약중' ? '#ffc107' : '#6c757d') }
+                            ]} 
+                            onPress={() => selectedPost && handleStatusChange(selectedPost)}
+                            >
+                                <Text style={[styles.btnText, selectedPost?.status === '예약중' && {color: '#000'}]}>
+                                {selectedPost?.status === '판매완료' ? '거래 완료됨' : '상태 변경'}
+                                </Text>
+                            </TouchableOpacity>
+                            
+                            <TouchableOpacity style={[styles.actionBtn, {backgroundColor:'#f8f9fa', borderWidth:1, borderColor:'#ddd', marginHorizontal:5}]} onPress={() => selectedPost && handleEdit(selectedPost)}>
+                                <Text style={[styles.btnText, {color:'#333'}]}>수정</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.actionBtn, {backgroundColor:'#dc3545'}]} onPress={() => selectedPost && handleDelete(selectedPost)}>
+                                <Text style={styles.btnText}>삭제</Text>
+                            </TouchableOpacity>
+                        </>
+                    ) : (
+                        <TouchableOpacity 
+                            style={[styles.chatBtn, selectedPost?.status === '판매완료' && {backgroundColor:'#ccc'}]} 
+                            onPress={() => selectedPost && handleChat(selectedPost)}
+                            disabled={selectedPost?.status === '판매완료'}
+                        >
+                            <Text style={styles.chatBtnText}>{selectedPost?.status === '판매완료' ? '판매 완료된 상품' : '채팅으로 구매하기'}</Text>
                         </TouchableOpacity>
                     )}
                 </View>
-
-                <Text style={styles.modalPrice}>{selectedPost?.price.toLocaleString()}원</Text>
-                
-                <TouchableOpacity 
-                    style={styles.modalProfileBtn} 
-                    onPress={() => setProfileUserId(selectedPost?.creatorId || null)}
-                >
-                    <Ionicons name="person-circle" size={20} color="#0062ffff" />
-                    <Text style={styles.modalProfileText}>판매자 정보 보기</Text>
-                </TouchableOpacity>
-
-                <Text style={styles.modalDesc}>{selectedPost?.description}</Text>
-            </ScrollView>
-            
-            <View style={styles.bottomBar}>
-                {isMyPost ? (
-                    <>
-                        <TouchableOpacity 
-                          style={[
-                            styles.actionBtn, 
-                            { backgroundColor: selectedPost?.status === '판매중' ? '#17a2b8' : (selectedPost?.status === '예약중' ? '#ffc107' : '#6c757d') }
-                          ]} 
-                          onPress={() => selectedPost && handleStatusChange(selectedPost)}
-                        >
-                            <Text style={[styles.btnText, selectedPost?.status === '예약중' && {color: '#000'}]}>
-                              {selectedPost?.status === '판매완료' ? '거래 완료됨' : '상태 변경'}
-                            </Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity style={[styles.actionBtn, {backgroundColor:'#f8f9fa', borderWidth:1, borderColor:'#ddd', marginHorizontal:5}]} onPress={() => selectedPost && handleEdit(selectedPost)}>
-                            <Text style={[styles.btnText, {color:'#333'}]}>수정</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.actionBtn, {backgroundColor:'#dc3545'}]} onPress={() => selectedPost && handleDelete(selectedPost)}>
-                            <Text style={styles.btnText}>삭제</Text>
-                        </TouchableOpacity>
-                    </>
-                ) : (
-                    <TouchableOpacity 
-                        style={[styles.chatBtn, selectedPost?.status === '판매완료' && {backgroundColor:'#ccc'}]} 
-                        onPress={() => selectedPost && handleChat(selectedPost)}
-                        disabled={selectedPost?.status === '판매완료'}
-                    >
-                        <Text style={styles.chatBtnText}>{selectedPost?.status === '판매완료' ? '판매 완료된 상품' : '채팅으로 구매하기'}</Text>
-                    </TouchableOpacity>
-                )}
             </View>
         </View>
       </Modal>
@@ -446,11 +475,7 @@ export default function MarketListScreen() {
       )}
 
       {pendingReviewPost && (
-        <BuyerReviewModal 
-          visible={!!pendingReviewPost}
-          postData={pendingReviewPost}
-          onClose={() => setPendingReviewPost(null)}
-        />
+        <BuyerReviewModal visible={!!pendingReviewPost} postData={pendingReviewPost} onClose={() => setPendingReviewPost(null)} />
       )}
 
       {selectedPost?.imageUrl && (
@@ -491,28 +516,15 @@ const styles = StyleSheet.create({
   profileLink: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: '#f0f0f0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
   profileLinkText: { fontSize: 11, color: '#555', marginLeft: 4 },
   
-  fab: { position: 'absolute', bottom: Platform.OS === 'ios' ? 110 : 80, right: 20, backgroundColor: '#0062ffff', borderRadius: 30, flexDirection: 'row', alignItems: 'center', padding: 15, elevation: 5, zIndex: 9999, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84 },
+  // ✨ [수정] iOS 탭바 회피를 위해 높이 110으로 설정
+  fab: { position: 'absolute', bottom: Platform.OS === 'ios' ? 90 : 20, right: 20, backgroundColor: '#0062ffff', borderRadius: 30, flexDirection: 'row', alignItems: 'center', padding: 15, elevation: 5, zIndex: 9999, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84 },
   fabText: { color: '#fff', fontWeight: 'bold', marginLeft: 5, fontSize: 16 },
   
-  // ✨ [수정된 모달 스타일]
-  modalContainer: { 
-      flex: 1, 
-      backgroundColor: '#fff',
-      // 아이폰이면 상단 여백을 좀 줘서 X버튼이 잘 눌리게 함 (상태바 침범 방지)
-      paddingTop: Platform.OS === 'ios' ? 40 : 0 
-  },
-  modalHeader: { 
-      flexDirection: 'row', 
-      justifyContent: 'flex-start', // 왼쪽 정렬
-      alignItems: 'center', 
-      paddingHorizontal: 15, 
-      paddingBottom: 10 
-  },
-  closeButton: { 
-      padding: 10, 
-      marginLeft: -10 
-  },
-  
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  // ✨ [수정] 높이 60% 제한 (바텀 시트 스타일)
+  modalContainer: { width: '100%', backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '60%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', paddingHorizontal: 15, paddingTop: 15, paddingBottom: 5 },
+  closeButton: { padding: 10, marginLeft: -10 },
   modalImage: { width: '100%', height: 300, resizeMode: 'cover', borderRadius: 10 },
   modalInfoRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 15 },
   modalCategory: { color: '#888' },

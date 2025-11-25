@@ -16,13 +16,12 @@ import {
   updateDoc,
   where
 } from 'firebase/firestore';
-import React, { memo, useCallback, useEffect, useState } from 'react'; // ✨ memo 추가
+import React, { memo, useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   BackHandler,
   FlatList,
-  Image,
   Modal,
   Platform,
   RefreshControl,
@@ -36,6 +35,12 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
+// ✨ [최적화] 고성능 이미지 컴포넌트 사용
+import { Image } from 'expo-image';
+
+// ✨ [추가] 이미지 확대 뷰어
+import ImageView from 'react-native-image-viewing';
+
 interface ClubPost {
   id: string;
   clubName: string;
@@ -47,19 +52,20 @@ interface ClubPost {
   imageUrl?: string;
 }
 
-// ✨ [최적화 1] 리스트 아이템 분리 및 메모이제이션
+// ✨ [최적화] 리스트 아이템 분리 & 메모이제이션
 const ClubItem = memo(({ item, onPress }: { item: ClubPost, onPress: (post: ClubPost) => void }) => {
   const isFull = item.currentMembers.length >= item.memberLimit;
   
   return (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={() => onPress(item)}
-      activeOpacity={0.7}
-    >
+    <TouchableOpacity style={styles.card} onPress={() => onPress(item)} activeOpacity={0.8}>
       <View style={styles.cardContent}>
         {item.imageUrl ? (
-          <Image source={{ uri: item.imageUrl }} style={styles.cardImage} />
+          <Image 
+            source={item.imageUrl} 
+            style={styles.cardImage} 
+            contentFit="cover"
+            transition={200} 
+          />
         ) : (
           <View style={styles.noImagePlaceholder}>
             <Ionicons name="image-outline" size={30} color="#ccc" />
@@ -100,39 +106,27 @@ export default function ClubListScreen() {
   const [isSearching, setIsSearching] = useState(false); 
   const [searchQuery, setSearchQuery] = useState('');   
 
-  // 뒤로가기 핸들링
+  // ✨ 이미지 뷰어 상태
+  const [isImageViewerVisible, setIsImageViewerVisible] = useState(false);
+
   useEffect(() => {
     const backAction = () => {
-      if (isSearching) {
-        setIsSearching(false);
-        setSearchQuery('');
-        return true; 
-      }
-      if (modalVisible) {
-        setModalVisible(false);
-        return true;
-      }
+      if (isImageViewerVisible) { setIsImageViewerVisible(false); return true; }
+      if (isSearching) { setIsSearching(false); setSearchQuery(''); return true; }
+      if (modalVisible) { setModalVisible(false); return true; }
       return false;
     };
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
-  }, [isSearching, modalVisible]);
+  }, [isSearching, modalVisible, isImageViewerVisible]);
 
-  // 데이터 로드
   const fetchClubPosts = useCallback(() => {
-    if (!currentUser) { 
-      setLoading(false);
-      setClubPosts([]);
-      return () => {};
-    }
-
+    if (!currentUser) { setLoading(false); setClubPosts([]); return () => {}; }
     setLoading(true);
     let q = query(collection(db, 'clubPosts'));
-
     if (selectedFilter !== '전체') {
       q = query(q, where('activityField', '==', selectedFilter));
     }
-
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const postsData = querySnapshot.docs.map(doc => {
         const data = doc.data();
@@ -148,18 +142,14 @@ export default function ClubListScreen() {
         };
       }) as ClubPost[];
       
-      // 최신순 정렬 (단순 ID 기준 역순)
+      // 최신순 정렬
       postsData.sort((a, b) => (b.id > a.id ? 1 : -1));
-
       setClubPosts(postsData);
       setLoading(false);
       setRefreshing(false);
     }, (error) => {
-      // console.error("Fetch error:", error); // ✨ 로그 최소화
       setLoading(false);
-      setRefreshing(false);
     });
-
     return unsubscribe;
   }, [currentUser, selectedFilter]); 
 
@@ -178,13 +168,17 @@ export default function ClubListScreen() {
       post.description.toLowerCase().includes(lowerQuery)
     );
   };
-  const displayedPosts = getFilteredPosts();
 
-  // 이벤트 핸들러
+  // ✨ [최적화] 아이템 누를 때 useCallback
   const handlePressPost = useCallback((post: ClubPost) => {
     setSelectedPost(post);
     setModalVisible(true);
   }, []);
+
+  // ✨ [최적화] 렌더링 함수
+  const renderItem = useCallback(({ item }: { item: ClubPost }) => (
+    <ClubItem item={item} onPress={handlePressPost} />
+  ), [handlePressPost]);
 
   const handleCreateClubPost = () => {
     if (!currentUser) return Alert.alert("로그인 필요", "로그인 후 작성할 수 있습니다.");
@@ -277,23 +271,10 @@ export default function ClubListScreen() {
     } catch (error) { Alert.alert("오류", "채팅방 연결 실패"); }
   };
 
-  // ✨ [최적화 2] 렌더링 함수
-  const renderItem = useCallback(({ item }: { item: ClubPost }) => (
-    <ClubItem item={item} onPress={handlePressPost} />
-  ), [handlePressPost]);
-
   if (loading) return <SafeAreaView style={[styles.container, {justifyContent:'center'}]}><ActivityIndicator size="large" color="#0062ffff" /></SafeAreaView>;
-  if (!currentUser) return (
-    <SafeAreaView style={styles.container}>
-        <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-            <Text style={styles.headerTitle}>동아리·학회</Text>
-        </View>
-        <View style={styles.emptyListContainer}>
-            <Text style={styles.emptyListText}>로그인 필요</Text>
-            <TouchableOpacity style={styles.loginButton} onPress={() => router.replace('/(auth)/login')}><Text style={styles.loginButtonText}>로그인</Text></TouchableOpacity>
-        </View>
-    </SafeAreaView>
-  );
+  
+  // 로그인 안된 경우 처리 (레이아웃에서 처리하지만 혹시 몰라 남겨둠)
+  if (!currentUser) return <SafeAreaView style={styles.container} />;
 
   const isMyPost = currentUserId && selectedPost?.creatorId === currentUserId;
 
@@ -305,13 +286,7 @@ export default function ClubListScreen() {
              <TouchableOpacity onPress={() => { setIsSearching(false); setSearchQuery(''); }} style={{marginRight: 10}}>
                <Ionicons name="arrow-back" size={24} color="#333" />
              </TouchableOpacity>
-             <TextInput
-                style={styles.searchInput}
-                placeholder="동아리 이름, 내용 검색"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                autoFocus
-             />
+             <TextInput style={styles.searchInput} placeholder="동아리 이름, 내용 검색" value={searchQuery} onChangeText={setSearchQuery} autoFocus />
              {searchQuery.length > 0 && <TouchableOpacity onPress={() => setSearchQuery('')}><Ionicons name="close-circle" size={20} color="#999" /></TouchableOpacity>}
           </View>
         ) : (
@@ -334,16 +309,14 @@ export default function ClubListScreen() {
         </View>
       )}
 
-      {/* ✨ [최적화 3] FlatList 성능 옵션 적용 */}
+      {/* ✨ [최적화] FlatList 설정 */}
       <FlatList
-        data={displayedPosts} 
+        data={getFilteredPosts()} 
         renderItem={renderItem} 
         keyExtractor={item => item.id}
         contentContainerStyle={styles.flatListContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#0062ffff']} />}
         ListEmptyComponent={<View style={styles.emptyListContainer}><Text style={styles.emptyListText}>{searchQuery?"검색 결과 없음":"내용 없음"}</Text></View>}
-        
-        // 성능 옵션
         initialNumToRender={6}
         maxToRenderPerBatch={6}
         windowSize={5}
@@ -358,17 +331,29 @@ export default function ClubListScreen() {
       <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
         <View style={modalStyles.overlay}>
           <View style={modalStyles.modalContainer}>
-            <View style={[modalStyles.modalHeader, { paddingTop: Platform.OS === 'ios' ? insets.top : 0 }]}>
-              <TouchableOpacity onPress={() => setModalVisible(false)} style={modalStyles.closeButton}><Ionicons name="arrow-back" size={28} color="#999" /></TouchableOpacity>
-              <Text style={modalStyles.modalTitle} numberOfLines={1}>{selectedPost?.clubName}</Text>
-              <View style={modalStyles.closeButton} />
+            {/* ✨ 모달 헤더: X 버튼 왼쪽 */}
+            <View style={modalStyles.modalHeader}>
+              <TouchableOpacity onPress={() => setModalVisible(false)} style={modalStyles.closeButton}>
+                  <Ionicons name="close" size={32} color="#333" />
+              </TouchableOpacity>
             </View>
+
             <ScrollView contentContainerStyle={modalStyles.scrollViewContent}>
-              {selectedPost?.imageUrl && <Image source={{ uri: selectedPost.imageUrl }} style={modalStyles.modalImage} />}
+              {selectedPost?.imageUrl && (
+                // ✨ 이미지 확대 기능 연결
+                <TouchableOpacity onPress={() => setIsImageViewerVisible(true)}>
+                  <Image 
+                    source={selectedPost.imageUrl} 
+                    style={modalStyles.modalImage} 
+                    contentFit="cover"
+                  />
+                </TouchableOpacity>
+              )}
               <Text style={modalStyles.modalSubTitle}>분야: {selectedPost?.activityField}</Text>
               <Text style={modalStyles.modalSubTitle}>인원: {selectedPost?.currentMembers.length} / {selectedPost?.memberLimit}명</Text>
               <Text style={modalStyles.modalDescription}>{selectedPost?.description}</Text>
             </ScrollView>
+
             {isMyPost ? (
                <View style={modalStyles.ownerButtonContainer}>
                   <TouchableOpacity style={[modalStyles.actionButton, modalStyles.editButton]} onPress={() => selectedPost && handleEditPost(selectedPost)}>
@@ -392,6 +377,18 @@ export default function ClubListScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ✨ 이미지 확대 뷰어 */}
+      {selectedPost?.imageUrl && (
+        <ImageView
+          images={[{ uri: selectedPost.imageUrl }]}
+          imageIndex={0}
+          visible={isImageViewerVisible}
+          onRequestClose={() => setIsImageViewerVisible(false)}
+          swipeToCloseEnabled={true}
+        />
+      )}
+
     </SafeAreaView>
   );
 }
@@ -409,10 +406,20 @@ const styles = StyleSheet.create({
   filterButtonText: { color: '#555', fontWeight: '500' },
   filterButtonTextActive: { color: '#fff', fontWeight: 'bold' },
   flatListContent: { paddingHorizontal: 15, paddingBottom: 100 },
+  
+  // ✨ [수정] zIndex 추가 (리스트가 버튼 위로 올라오는 것 방지)
+  fab: { position: 'absolute', bottom: Platform.OS === 'ios' ? 110 : 80, right: 20, backgroundColor: '#0062ffff', borderRadius: 30, width: 120, height: 50, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5, zIndex: 9999 },
+  fabText: { color: 'white', fontSize: 18, fontWeight: 'bold', marginLeft: 5 },
+  
+  emptyListContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 50 },
+  emptyListText: { fontSize: 16, color: '#666', marginTop: 10 },
+  loginButton: { backgroundColor: '#0062ffff', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8, marginTop: 20 },
+  loginButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+
   card: { backgroundColor: '#fff', borderRadius: 10, marginBottom: 10, padding: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 3 },
   cardContent: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   noImagePlaceholder: { width: 80, height: 80, borderRadius: 8, backgroundColor: '#f5f5f5', justifyContent: 'center', alignItems: 'center', marginRight: 15, borderWidth: 1, borderColor: '#ddd' },
-  cardImage: { width: 80, height: 80, borderRadius: 8, marginRight: 15, resizeMode: 'cover' },
+  cardImage: { width: 80, height: 80, borderRadius: 8, marginRight: 15 },
   textContainer: { flex: 1 },
   clubName: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 5 },
   tagContainer: { flexDirection: 'row', marginBottom: 5 },
@@ -421,30 +428,32 @@ const styles = StyleSheet.create({
   memberStatusFull: { backgroundColor: '#ffcdd2' },
   memberStatusText: { fontSize: 12, color: '#333' },
   description: { fontSize: 14, color: '#555', marginBottom: 5 },
-  fab: {
-    position: 'absolute', bottom: Platform.OS === 'ios' ? 90 : 70, right: 20,
-    backgroundColor: '#0062ffff', borderRadius: 30, width: 120, height: 50,
-    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5,
-  },
-  // ✨ [수정] iOS 탭바 가림 방지 (bottom: 110)
-  fab: { position: 'absolute', bottom: Platform.OS === 'ios' ? 90 : 20, right: 20, backgroundColor: '#0062ffff', borderRadius: 30, width: 120, height: 50, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5, zIndex: 9999 },
-  fabText: { color: 'white', fontSize: 18, fontWeight: 'bold', marginLeft: 5 },
-  emptyListContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 50 },
-  emptyListText: { fontSize: 16, color: '#666', marginTop: 10 },
-  loginButton: { backgroundColor: '#0062ffff', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8, marginTop: 20 },
-  loginButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 });
 
 const modalStyles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', justifyContent: 'flex-end', alignItems: 'center' },
-  modalContainer: { width: '100%', backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%', paddingBottom: Platform.OS === 'ios' ? 30 : 0 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 15, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee', backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20 },
-  closeButton: { padding: 5 },
+  overlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', justifyContent: 'flex-end' },
+  
+  // ✨ [수정] 모달 높이 줄임 (60%)
+  modalContainer: { 
+      width: '100%', 
+      backgroundColor: '#fff', 
+      borderTopLeftRadius: 20, 
+      borderTopRightRadius: 20, 
+      maxHeight: '60%', 
+      paddingBottom: Platform.OS === 'ios' ? 30 : 0 
+  },
+  modalHeader: { 
+      flexDirection: 'row', 
+      justifyContent: 'flex-start', 
+      paddingHorizontal: 15, 
+      paddingTop: 15, 
+      paddingBottom: 10 
+  },
+  closeButton: { padding: 10, marginLeft: -10 },
+  
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#333', flex: 1, textAlign: 'center', marginHorizontal: 10 },
-  scrollViewContent: { padding: 20 },
-  modalImage: { width: '100%', height: 200, borderRadius: 10, marginBottom: 15, resizeMode: 'cover' },
+  scrollViewContent: { paddingHorizontal: 20, paddingBottom: 20 },
+  modalImage: { width: '100%', height: 200, borderRadius: 10, marginBottom: 15 },
   modalSubTitle: { fontSize: 16, fontWeight: 'bold', color: '#555', marginBottom: 8 },
   modalDescription: { fontSize: 15, color: '#333', lineHeight: 22, marginBottom: 20 },
   applyButton: { backgroundColor: '#0062ffff', paddingVertical: 15, borderRadius: 10, alignItems: 'center', marginHorizontal: 20, marginBottom: 20 },
