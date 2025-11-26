@@ -75,8 +75,6 @@ const ChatInput = memo(({ onSend, bottomInset }: { onSend: (text: string) => voi
         setText(''); 
     };
 
-    // ✨ [핵심 수정] 안드로이드는 0 또는 아주 작은 값(5)만 줌
-    // resize 모드에서는 OS가 알아서 뷰를 줄여주므로 큰 패딩을 주면 붕 뜸
     const paddingBottom = Platform.OS === 'ios' ? bottomInset : 10;
 
     return (
@@ -118,52 +116,82 @@ const ChatRoomScreen: React.FC = () => {
   const currentUserId = user?.uid;
   const flatListRef = useRef<FlatList>(null);
 
+  // 1. [수정됨] 읽음 처리는 별도 함수로 분리 (리스너 내부에서 호출 X)
   const updateLastRead = useCallback(async () => {
     if (!chatRoomId || !currentUserId) return;
-    try { await updateDoc(doc(db, 'chatRooms', chatRoomId), { [`lastReadBy.${currentUserId}`]: serverTimestamp() }); } catch (e) {}
+    try { 
+        await updateDoc(doc(db, 'chatRooms', chatRoomId), { 
+            [`lastReadBy.${currentUserId}`]: serverTimestamp() 
+        }); 
+    } catch (e) {
+        console.log("Update read failed", e);
+    }
   }, [chatRoomId, currentUserId]);
 
+  // 2. [수정됨] 채팅방 정보 리스너 (읽기만 수행)
   useEffect(() => {
-    if (!chatRoomId || !currentUserId) return;
-
+    if (!chatRoomId) return;
     const chatDocRef = doc(db, 'chatRooms', chatRoomId);
-    const myDocRef = doc(db, 'users', currentUserId);
-
-    const unsubChat = onSnapshot(chatDocRef, async (docSnap) => {
+    
+    const unsubChat = onSnapshot(chatDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = { id: docSnap.id, ...docSnap.data() } as ChatRoom;
         setChatRoom(data);
         navigation.setOptions({ title: data.name || '채팅방' });
-        updateLastRead();
-
-        const missingMembers = data.members.filter(uid => !userDisplayNames[uid]);
-        if (missingMembers.length > 0) {
-            const newNames: { [uid: string]: string } = {};
-            const promises = missingMembers.map(async (uid) => {
-                try {
-                    const uSnap = await getDoc(doc(db, 'users', uid));
-                    let name = '알 수 없음';
-                    if (uSnap.exists()) {
-                        const d = uSnap.data();
-                        if (d.department) {
-                             if (d.email) {
-                                 const prefix = d.email.split('@')[0];
-                                 const two = prefix.substring(0, 2);
-                                 if (!isNaN(Number(two)) && two.length === 2) name = `${two}학번 ${d.department}`;
-                                 else name = `${prefix}님 ${d.department}`;
-                             } else { name = d.department; }
-                        } else if (d.displayName) name = d.displayName;
-                    }
-                    newNames[uid] = name;
-                } catch { newNames[uid] = '익명'; }
-            });
-            await Promise.all(promises);
-            setUserDisplayNames(prev => ({ ...prev, ...newNames }));
-        }
       }
       setLoading(false);
     });
 
+    return () => unsubChat();
+  }, [chatRoomId]);
+
+  // 3. [추가됨] 멤버 이름 가져오기 (chatRoom이 변경될 때만 실행)
+  useEffect(() => {
+    if (!chatRoom || !chatRoom.members) return;
+
+    const fetchMissingNames = async () => {
+        // 이미 이름이 있는 유저는 제외
+        const missingMembers = chatRoom.members.filter(uid => !userDisplayNames[uid]);
+        if (missingMembers.length === 0) return;
+
+        const newNames: { [uid: string]: string } = {};
+        const promises = missingMembers.map(async (uid) => {
+            try {
+                const uSnap = await getDoc(doc(db, 'users', uid));
+                let name = '알 수 없음';
+                if (uSnap.exists()) {
+                    const d = uSnap.data();
+                    if (d.department) {
+                         if (d.email) {
+                             const prefix = d.email.split('@')[0];
+                             const two = prefix.substring(0, 2);
+                             if (!isNaN(Number(two)) && two.length === 2) name = `${two}학번 ${d.department}`;
+                             else name = `${prefix}님 ${d.department}`;
+                         } else { name = d.department; }
+                    } else if (d.displayName) name = d.displayName;
+                }
+                newNames[uid] = name;
+            } catch { newNames[uid] = '익명'; }
+        });
+        await Promise.all(promises);
+        setUserDisplayNames(prev => ({ ...prev, ...newNames }));
+    };
+
+    fetchMissingNames();
+  }, [chatRoom?.members]); // chatRoom 전체가 아니라 members 배열이 바뀔 때만
+
+  // 4. [추가됨] 메시지가 로드되거나 내가 메시지를 보내면 읽음 처리 업데이트
+  useEffect(() => {
+    if (messages.length > 0) {
+        updateLastRead();
+    }
+  }, [messages.length, updateLastRead]); // 메시지 개수가 변할 때만 실행
+
+  // 5. 메시지 & 차단 리스너
+  useEffect(() => {
+    if (!chatRoomId || !currentUserId) return;
+
+    const myDocRef = doc(db, 'users', currentUserId);
     const unsubBlock = onSnapshot(myDocRef, (docSnap) => {
         if(docSnap.exists()) setMyBlockedUsers(docSnap.data().blockedUsers || []);
     });
@@ -183,7 +211,7 @@ const ChatRoomScreen: React.FC = () => {
         setLoading(false);
     });
 
-    return () => { unsubChat(); unsubBlock(); unsubMsg(); };
+    return () => { unsubBlock(); unsubMsg(); };
   }, [chatRoomId, currentUserId]);
 
   const handleSend = useCallback(async (text: string) => {
@@ -202,7 +230,8 @@ const ChatRoomScreen: React.FC = () => {
         lastMessage: text,
         lastMessageTimestamp: serverTimestamp(),
       });
-      updateLastRead();
+      // updateLastRead는 메시지 리스너(useEffect)에 의해 자동으로 처리되므로 여기서 굳이 호출 안 해도 됨
+      // 하지만 즉각적인 반응을 위해 남겨둬도 무방 (루프는 안 돔)
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (e) { console.error(e); }
   }, [chatRoom, myBlockedUsers, chatRoomId, currentUserId]);
@@ -231,29 +260,24 @@ const ChatRoomScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      
-      {/* ✨ OS별 분기 처리 */}
       {Platform.OS === 'android' ? (
-        // 🤖 안드로이드: KeyboardAvoidingView 제거 (OS resize 모드 사용)
-        // 이렇게 해야 키보드가 올라올 때 뷰가 자동으로 줄어들고 입력창이 딱 붙음
         <View style={styles.container}>
            <FlatList
-              ref={flatListRef}
-              data={messages}
-              keyExtractor={item => item._id}
-              renderItem={renderItem}
-              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-              style={styles.messageList}
-              contentContainerStyle={[styles.messageListContent, { paddingBottom: 10 }]}
-              initialNumToRender={15}
-              maxToRenderPerBatch={10}
-              windowSize={10}
-              removeClippedSubviews={true}
+             ref={flatListRef}
+             data={messages}
+             keyExtractor={item => item._id}
+             renderItem={renderItem}
+             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+             style={styles.messageList}
+             contentContainerStyle={[styles.messageListContent, { paddingBottom: 10 }]}
+             initialNumToRender={15}
+             maxToRenderPerBatch={10}
+             windowSize={10}
+             removeClippedSubviews={true}
            />
            <ChatInput onSend={handleSend} bottomInset={0} />
         </View>
       ) : (
-        // 🍎 iOS: KeyboardAvoidingView 사용
         <KeyboardAvoidingView
           style={styles.container}
           behavior="padding"
