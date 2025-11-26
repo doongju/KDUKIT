@@ -332,7 +332,7 @@ const styles = StyleSheet.create({
   readCountText: { fontSize: 11, color: '#ffc107', fontWeight: 'bold', textAlign: 'right', marginBottom: 2 },
   inputWrapper: { backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#eee', paddingTop: 8, paddingHorizontal: 10 },
   inputContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
-  input: { flex: 1, minHeight: 50, maxHeight: 120, borderWidth: 1, borderColor: '#ddd', borderRadius: 25, paddingHorizontal: 20, paddingVertical: 10, marginRight: 10, backgroundColor: '#f9f9f9', fontSize: 16 },
+  input: { flex: 1, minHeight: 50, maxHeight: 120, borderWidth: 1, borderColor: '#0000', borderRadius: 25, paddingHorizontal: 20, paddingVertical: 10, marginRight: 10, backgroundColor: '#f9f9f9', fontSize: 16 },
   sendButton: { backgroundColor: '#0062ffff', borderRadius: 20, paddingHorizontal: 15, paddingVertical: 12, justifyContent: 'center' },
   sendButtonText: { color: 'white', fontWeight: 'bold' },
 });

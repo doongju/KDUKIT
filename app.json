@@ -17,7 +17,7 @@
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.kdu.kit",
+      "package": "com.kdu.kdukit",
       "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
