@@ -17,7 +17,7 @@ import {
   updateDoc,
   where
 } from 'firebase/firestore';
-import React, { memo, useCallback, useEffect, useState } from 'react'; // ✨ memo 추가
+import { memo, useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   BackHandler,
@@ -90,6 +90,7 @@ const MarketItem = memo(({ item, onPress, onToggleWish, onProfilePress, isWished
     // 리렌더링 방지 조건: 데이터가 같고 찜 상태가 같으면 다시 안 그림
     return prev.item === next.item && prev.isWished === next.isWished;
 });
+MarketItem.displayName = "MarketItem";
 
 export default function MarketListScreen() {
   const insets = useSafeAreaInsets();
@@ -223,7 +224,7 @@ export default function MarketListScreen() {
             await deleteDoc(doc(db, "marketPosts", post.id));
             Alert.alert("삭제 완료", "게시글이 삭제되었습니다.");
             setModalVisible(false);
-          } catch(e) { Alert.alert("오류", "삭제 실패"); }
+          } catch { Alert.alert("오류", "삭제 실패"); }
       }}
     ]);
   };
@@ -293,7 +294,7 @@ export default function MarketListScreen() {
                     buyerName = `${entryYear}학번 ${d.department} 학우`;
                 }
             }
-        } catch(e) {}
+        } catch {}
         
         await setDoc(chatRoomRef, {
           name: `[구매문의] ${post.title}`, 
@@ -310,7 +311,7 @@ export default function MarketListScreen() {
       }
       setModalVisible(false);
       router.push(`/chat/${chatRoomId}`);
-    } catch (e) {
+    } catch  {
       Alert.alert("오류", "채팅방 연결 실패");
     }
   };

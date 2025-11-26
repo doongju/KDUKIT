@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { arrayRemove, collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
-import React, { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -72,6 +72,7 @@ const ChatRoomItem = memo(({ item, onPress, onLongPress }: { item: ChatRoom, onP
     return prev.item.lastMessage === next.item.lastMessage && 
            prev.item.lastMessageTimestamp?.toMillis() === next.item.lastMessageTimestamp?.toMillis();
 });
+ChatRoomItem.displayName = 'ChatRoomItem';
 
 export default function ChatListScreen() {
   const insets = useSafeAreaInsets();
@@ -125,7 +126,7 @@ export default function ChatListScreen() {
 
   const handleChatRoomPress = useCallback((chatRoomId: string) => {
     router.push(`/chat/${chatRoomId}`); 
-  }, []);
+  }, [router]);
 
   const handleLongPressChatRoom = useCallback((chatRoomId: string, roomName: string) => {
     Alert.alert("나가기", `'${roomName}' 방을 나가시겠습니까?`, [
@@ -134,7 +135,7 @@ export default function ChatListScreen() {
             if (!currentUser) return;
             try {
               await updateDoc(doc(db, 'chatRooms', chatRoomId), { members: arrayRemove(currentUser.uid) });
-            } catch (e) {}
+            } catch {}
         }}
     ]);
   }, [currentUser]);
