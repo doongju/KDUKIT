@@ -1,5 +1,5 @@
 import { Picker } from '@react-native-picker/picker';
-import { Checkbox } from 'expo-checkbox';
+import Checkbox from 'expo-checkbox';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { addDoc, collection, deleteDoc, doc, getDocs, query, updateDoc, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
@@ -18,7 +18,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
-// ✨ 랜덤으로 사용할 파스텔 톤 색상 팔레트
+// ✨ 랜덤 파스텔 색상
 const CARD_COLORS = [
   '#FFADAD', '#FFD6A5', '#FDFFB6', '#CAFFBF', '#9BF6FF', 
   '#A0C4FF', '#BDB2FF', '#FFC6FF', '#E2F0CB', '#FFDAC1',
@@ -38,24 +38,35 @@ interface TimetableEntry {
 
 interface PickerItemData {
   label: string;
-  value: any;
+  value: number;
 }
 
 // --- Constants ---
 const daysOfWeek = ['월요일', '화요일', '수요일', '목요일', '금요일'];
 
+// 1️⃣ [입력용] 30분 단위 시간 옵션 (09:00, 09:30, 10:00 ...)
+// 사용자가 30분 단위로 자유롭게 선택하여 칸 중간에 배치되는 것을 확인 가능하게 함
 const generateTimeOptions = () => {
   const options = [];
-  for (let h = 9; h <= 18; h++) {
-    const minute = 30;
-    const label = `${String(h).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-    const value = h + minute / 60;
-    options.push({ label, value });
+  const startHour = 9;
+  const endHour = 19; 
+
+  for (let h = startHour; h < endHour; h++) {
+    // 00분
+    options.push({ label: `${String(h).padStart(2, '0')}:00`, value: h });
+    // 30분
+    options.push({ label: `${String(h).padStart(2, '0')}:30`, value: h + 0.5 });
   }
+  // 마지막 19:00
+  options.push({ label: `${endHour}:00`, value: endHour });
+  
   return options;
 };
 
-const timeOptions = generateTimeOptions();
+const pickerTimeOptions = generateTimeOptions();
+
+// 2️⃣ [배경용] 1시간 단위 그리드 (09, 10, ... 18)
+const gridHours = Array.from({ length: 10 }, (_, i) => 9 + i); 
 
 // --- Helpers ---
 const parseTime = (timeString: string) => {
@@ -64,6 +75,7 @@ const parseTime = (timeString: string) => {
   if (parts.length < 2) return null;
   const [day, timeRange] = parts;
   const [startTimeStr, endTimeStr] = timeRange.split('-');
+  
   const parseHourMinute = (hmStr: string) => {
     const [h, m] = hmStr.split(':').map(Number);
     return h + m / 60;
@@ -86,7 +98,7 @@ const getColorByString = (str: string) => {
   return CARD_COLORS[index];
 };
 
-// 커스텀 피커 컴포넌트 (모달 방식)
+// 커스텀 피커 컴포넌트
 const CustomPicker = ({ 
   selectedValue, 
   onValueChange, 
@@ -98,7 +110,7 @@ const CustomPicker = ({
   label?: string;
 }) => {
   const [showIosPicker, setShowIosPicker] = useState(false);
-  const selectedLabel = items.find(i => i.value === selectedValue)?.label || items[0]?.label;
+  const selectedLabel = items.find(i => Math.abs(i.value - selectedValue) < 0.01)?.label || items[0]?.label;
 
   if (Platform.OS === 'android') {
     return (
@@ -172,8 +184,9 @@ const TimetableScreen: React.FC = () => {
   const [location, setLocation] = useState('');
   
   const [selectedDay, setSelectedDay] = useState<string>(daysOfWeek[0]);
-  const [selectedStartTime, setSelectedStartTime] = useState<number>(timeOptions[0]?.value || 9.5);
-  const [selectedEndTime, setSelectedEndTime] = useState<number>(timeOptions[Math.min(1, timeOptions.length - 1)]?.value || 10.5);
+  
+  const [selectedStartTime, setSelectedStartTime] = useState<number>(9.5);
+  const [selectedEndTime, setSelectedEndTime] = useState<number>(10.5);
 
   const [isOnline, setIsOnline] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
@@ -219,8 +232,8 @@ const TimetableScreen: React.FC = () => {
     setLocation('');
     setIsOnline(false);
     setSelectedDay(daysOfWeek[0]);
-    setSelectedStartTime(timeOptions[0]?.value || 9.5);
-    setSelectedEndTime(timeOptions[Math.min(1, timeOptions.length - 1)]?.value || 10.5);
+    setSelectedStartTime(9.5);
+    setSelectedEndTime(10.5);
     setIsAdding(false);
   };
 
@@ -228,38 +241,9 @@ const TimetableScreen: React.FC = () => {
     if (!courseName || !user) { Alert.alert('오류', '과목명을 입력해주세요.'); return; }
     if (!isOnline && selectedStartTime >= selectedEndTime) { Alert.alert('오류', '종료 시간은 시작 시간보다 늦어야 합니다.'); return; }
 
-    // ✨ [추가] 시간표 중복 체크 로직
-    if (!isOnline) {
-      const isOverlap = timetable.some(item => {
-        // 수정 중일 때는 자기 자신(currentEditId)과 비교하지 않음
-        if (isEditing && item.id === currentEditId) return false;
-        
-        // 온라인 강의는 시간 충돌 검사 제외
-        if (item.isOnline) return false;
-
-        const parsed = parseTime(item.time);
-        if (!parsed) return false;
-
-        // 1. 요일이 같은지 확인
-        if (parsed.day === selectedDay) {
-          // 2. 시간 겹치는지 확인 (교차 검사)
-          // (새로운 시작 시간 < 기존 종료 시간) AND (새로운 종료 시간 > 기존 시작 시간)
-          if (selectedStartTime < parsed.end && selectedEndTime > parsed.start) {
-            return true;
-          }
-        }
-        return false;
-      });
-
-      if (isOverlap) {
-        Alert.alert(`이미 (${selectedDay})에 다른 수업이 있습니다.`);
-        return;
-      }
-    }
-
     const formatTimeValue = (value: number) => {
       const h = Math.floor(value);
-      const m = (value % 1) * 60;
+      const m = Math.round((value % 1) * 60);
       return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     };
 
@@ -285,6 +269,7 @@ const TimetableScreen: React.FC = () => {
       }
       fetchTimetable();
     } catch (e) {
+      console.error(e);
       Alert.alert("오류", "저장 실패");
     }
   };
@@ -332,8 +317,10 @@ const TimetableScreen: React.FC = () => {
     }
   };
 
+  // 3️⃣ [렌더링] 1시간 단위 배경 + 30분 단위 오프셋 배치
   const renderTimetableGrid = () => {
-    const timeBlockHeight = 50; 
+    const ROW_HEIGHT = 60; 
+
     return (
       <View style={styles.timetableGrid}>
         <View style={styles.dayHeaderRow}>
@@ -344,18 +331,25 @@ const TimetableScreen: React.FC = () => {
             </View>
           ))}
         </View>
-        {timeOptions.map((timeObj) => (
-          <View key={timeObj.label} style={[styles.timeRow, { height: timeBlockHeight }]}>
+
+        {gridHours.map((hour) => (
+          <View key={hour} style={[styles.timeRow, { height: ROW_HEIGHT }]}>
             <View style={styles.timeHeaderCell}>
-              <Text style={styles.timeHeaderText}>{timeObj.label}</Text>
+              <Text style={styles.timeHeaderText}>{`${String(hour).padStart(2,'0')}:00`}</Text>
             </View>
+
             {daysOfWeek.map(day => (
               <View key={day} style={styles.dayCell}>
                 {timetable.filter(item => !item.isOnline).map(item => {
                   const parsedTime = parseTime(item.time);
+                  
                   if (parsedTime && parsedTime.day === day) {
-                    if (parsedTime.start === timeObj.value) {
+                    if (Math.floor(parsedTime.start) === hour) {
+                      
                       const durationInHours = parsedTime.end - parsedTime.start;
+                      const blockHeight = durationInHours * ROW_HEIGHT;
+                      const topOffset = (parsedTime.start - hour) * ROW_HEIGHT;
+
                       const backgroundColor = item.color || getColorByString(item.courseName);
                       
                       return (
@@ -364,9 +358,8 @@ const TimetableScreen: React.FC = () => {
                           style={[
                             styles.courseBlock, 
                             { 
-                              height: durationInHours * timeBlockHeight, 
-                              top: 0, 
-                              zIndex: 10,
+                              top: topOffset + 1,
+                              height: blockHeight - 2, 
                               backgroundColor: backgroundColor
                             }
                           ]}
@@ -376,8 +369,8 @@ const TimetableScreen: React.FC = () => {
                             { text: "닫기" }
                           ])}
                         >
-                          <Text style={styles.courseBlockText}>{item.courseName}</Text>
-                          <Text style={styles.courseBlockLocation}>{item.location}</Text>
+                          <Text style={styles.courseBlockText} numberOfLines={2}>{item.courseName}</Text>
+                          <Text style={styles.courseBlockLocation} numberOfLines={1}>{item.location}</Text>
                         </TouchableOpacity>
                       );
                     }
@@ -403,7 +396,7 @@ const TimetableScreen: React.FC = () => {
            return (
             <TouchableOpacity
               key={item.id}
-              style={[styles.onlineClassItem, { backgroundColor: backgroundColor, borderColor: 'transparent' }]}
+              style={[styles.onlineClassItem, { backgroundColor: backgroundColor }]}
               onPress={() => handleEditStart(item)}
             >
               <Text style={styles.onlineClassText}>{item.courseName}</Text>
@@ -421,6 +414,8 @@ const TimetableScreen: React.FC = () => {
     <View style={styles.fullScreenContainer}>
       <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
         <Text style={styles.pageHeader}>내 시간표</Text>
+        
+        {/* ✨ [복구] 기존 텍스트 버튼 (추가/닫기) */}
         <TouchableOpacity style={styles.addButton} onPress={() => setIsAdding(!isAdding)}>
           <Text style={styles.addButtonText}>{isAdding ? '닫기' : '추가'}</Text>
         </TouchableOpacity>
@@ -452,9 +447,9 @@ const TimetableScreen: React.FC = () => {
               <View style={{ marginTop: 5 }}>
                 <Text style={styles.pickerLabel}>요일</Text>
                 <CustomPicker
-                  selectedValue={selectedDay}
-                  onValueChange={setSelectedDay}
-                  items={daysOfWeek.map(d => ({ label: d, value: d }))}
+                  selectedValue={daysOfWeek.indexOf(selectedDay)}
+                  onValueChange={(idx) => setSelectedDay(daysOfWeek[idx])}
+                  items={daysOfWeek.map((d, i) => ({ label: d, value: i }))}
                 />
                 
                 <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -463,7 +458,7 @@ const TimetableScreen: React.FC = () => {
                     <CustomPicker
                       selectedValue={selectedStartTime}
                       onValueChange={setSelectedStartTime}
-                      items={timeOptions}
+                      items={pickerTimeOptions.slice(0, pickerTimeOptions.length - 1)}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -471,7 +466,7 @@ const TimetableScreen: React.FC = () => {
                     <CustomPicker
                       selectedValue={selectedEndTime}
                       onValueChange={setSelectedEndTime}
-                      items={timeOptions.filter(o => o.value > selectedStartTime)}
+                      items={pickerTimeOptions.filter(o => o.value > selectedStartTime)}
                     />
                   </View>
                 </View>
@@ -561,8 +556,11 @@ const styles = StyleSheet.create({
   fullScreenContainer: { flex: 1, backgroundColor: '#f5f5f5' },
   headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 15, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#ddd' },
   pageHeader: { fontSize: 24, fontWeight: 'bold', color: '#0062ffff' },
+  
+  // ✨ [복구] 텍스트 버튼 스타일
   addButton: { backgroundColor: '#0062ffff', paddingVertical: 8, paddingHorizontal: 15, borderRadius: 20 },
   addButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+
   scrollContent: { padding: 20, paddingBottom: 40 },
   formHeader: { fontSize: 20, fontWeight: 'bold', marginBottom: 10, color: '#333' },
   inputContainer: { marginBottom: 20, padding: 15, backgroundColor: '#fff', borderRadius: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1, elevation: 2 },
@@ -607,7 +605,7 @@ const styles = StyleSheet.create({
     left: 0, 
     padding: 5, 
     borderRadius: 5, 
-    zIndex: 1 
+    zIndex: 10 
   },
   
   courseBlockText: { color: '#333', fontWeight: 'bold', fontSize: 10 },

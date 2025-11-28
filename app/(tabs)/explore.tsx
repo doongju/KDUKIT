@@ -84,7 +84,7 @@ const ExploreScreen: React.FC = () => {
         router.push('/(tabs)/marketlist');
         break;
       case '셔틀버스':
-        Alert.alert('준비 중', '셔틀버스 시간표 기능은 곧 업데이트됩니다! 🚌');
+        router.push('/(tabs)/shuttle');
         break;
       case '분실물 센터':
         router.push('/(tabs)/lost-and-found');
@@ -189,6 +189,7 @@ const ExploreScreen: React.FC = () => {
   useEffect(() => {
     const unsubscribe = fetchData();
     return () => { if (unsubscribe) unsubscribe(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const onRefresh = () => {

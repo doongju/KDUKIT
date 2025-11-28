@@ -1,25 +1,15 @@
 // app/(tabs)/_layout.tsx
 
-import Ionicons from '@expo/vector-icons/Ionicons'; // Ionicons 임포트
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 
-// ⚠️ 프로젝트에 HapticTab, TabBarBackground가 없다면 주석 처리하거나 삭제하세요.
-// 이 예시에서는 오류 방지를 위해 임포트 주석 처리 및 사용 제거합니다.
-// import { HapticTab } from '@/components/HapticTab'; 
-// import TabBarBackground from '@/components/ui/TabBarBackground';
-//import { useColorScheme } from '@/hooks/useColorScheme'; // useColorScheme 임포트
-
 export default function TabLayout() {
-  //const colorScheme = useColorScheme(); // useColorScheme 사용
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#0062ffff', 
+        tabBarActiveTintColor: '#0062ffff',
         headerShown: false,
-        // tabBarButton: HapticTab, // HapticTab 사용 제거
-        // tabBarBackground: TabBarBackground, // TabBarBackground 사용 제거
         tabBarStyle: Platform.select({
           ios: {
             position: 'absolute',
@@ -45,7 +35,7 @@ export default function TabLayout() {
       />
       
       <Tabs.Screen
-        name="chatlist" // 파일명: app/(tabs)/chatlist.tsx
+        name="chatlist"
         options={{
           title: '채팅',
           tabBarIcon: ({ color }) => <Ionicons size={28} name="chatbubbles" color={color} />,
@@ -62,75 +52,89 @@ export default function TabLayout() {
 
       {/* --- 탭 바에 보이지 않는 숨겨진 경로들 --- */}
 
-      {/* ⚠️ 택시 파티 목록 화면: 탭 바에서 숨김 처리 */}
+      {/* ⚠️ 택시 파티 목록 화면 */}
       <Tabs.Screen
-        name="taxiparty" // 파일명: app/(tabs)/taxiparty.tsx
+        name="taxiparty"
         options={{
           title: '택시 파티',
-          href: null, // 탭 바에 노출되지 않도록 설정
-          headerShown: true, // taxiparty.tsx 자체 헤더가 없으므로 여기서 표시
+          href: null,
+          headerShown: true,
         }}
       />
 
-      {/* ⚠️ 새로운 파티 생성 화면: 탭 바에서 숨김 처리 */}
+      {/* ⚠️ 새로운 파티 생성 화면 */}
       <Tabs.Screen
-        name="create-party" // 파일명: app/(tabs)/create-party.tsx
+        name="create-party"
         options={{
           title: '새 파티 만들기',
-          href: null, // 탭 바에 노출하지 않음
-          headerShown: false, // create-party.tsx에서 커스텀 헤더를 사용하기 위해 숨김
+          href: null,
+          headerShown: false,
         }}
       />
+
       <Tabs.Screen
         name="clublist" 
         options={{
           title: '동아리 모집',
-          href: null, // 탭 바에 노출되지 않도록 설정
+          href: null,
           headerShown: false,
         }}
       />
+
       <Tabs.Screen
         name="create-club" 
         options={{
           title: '클럽 만들기',
-          href: null, // 탭 바에 노출되지 않도록 설정
+          href: null,
           headerShown: false,
         }}
       />
-            <Tabs.Screen
+
+      <Tabs.Screen
         name="create-market" 
         options={{
           title: '마켓 만들기',
-          href: null, // 탭 바에 노출되지 않도록 설정
+          href: null,
           headerShown: false,
         }}
       />
-            <Tabs.Screen
+
+      <Tabs.Screen
         name="marketlist" 
         options={{
           title: '마켓 목록',
-          href: null, // 탭 바에 노출되지 않도록 설정
+          href: null,
           headerShown: false,
         }}
       />
 
-      {/* 👇 [분실물 센터] 경로 */}
+      {/* 👇 [분실물 센터] */}
       <Tabs.Screen 
-        name="lost-and-found" // 파일명: app/(tabs)/lost-and-found.tsx
+        name="lost-and-found"
         options={{ 
           title: "분실물 센터",
-          href: null, // 탭 바에서 숨기기
-          headerShown: false, // lost-and-found.tsx에서 커스텀 헤더를 사용할 것이므로 숨김
+          href: null,
+          headerShown: false,
         }} 
       />
 
-      {/* 👇 [분실물 등록] 페이지 경로를 여기에 추가했습니다! */}
+      {/* 👇 [분실물 등록] */}
       <Tabs.Screen 
-        name="create-lost-item" // 파일명: app/(tabs)/create-lost-item.tsx
+        name="create-lost-item"
         options={{ 
           title: "분실물 등록",
-          href: null, // 탭 바에서 숨기기
-          headerShown: false, // create-lost-item.tsx에서 커스텀 헤더를 사용할 것이므로 숨김
+          href: null,
+          headerShown: false,
+        }} 
+      />
+
+      {/* 👇 [셔틀버스] (새로 추가됨) */}
+      <Tabs.Screen 
+        name="shuttle" // 파일명: app/(tabs)/shuttle.tsx
+        options={{ 
+          title: "셔틀버스",
+          href: null, // 탭 바에서 숨기기 (홈 화면 아이콘으로 진입)
+          headerShown: false, // shuttle.tsx 내부에 헤더가 있으므로 시스템 헤더 숨김
         }} 
       />
 
