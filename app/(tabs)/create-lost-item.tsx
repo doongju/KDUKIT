@@ -6,20 +6,23 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Linking, // ✨ 추가: 설정으로 이동하기 위해 필요
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db, storage } from '../../firebaseConfig';
+
+const MAX_IMAGES = 5; // 최대 이미지 개수 제한 (5장)
 
 export default function CreateLostItemScreen() {
   const insets = useSafeAreaInsets();
@@ -40,31 +43,61 @@ export default function CreateLostItemScreen() {
   const [itemName, setItemName] = useState('');
   const [description, setDescription] = useState('');
   const [lostLocation, setLostLocation] = useState('');
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  
+  // 여러 장의 이미지를 관리하기 위한 배열 상태
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const pickImage = async () => {
+    // 1. 최대 개수 체크
+    if (selectedImages.length >= MAX_IMAGES) {
+        Alert.alert("알림", `최대 ${MAX_IMAGES}장까지만 등록 가능합니다.`);
+        return;
+    }
+
+    // 2. ✨ 권한 확인 및 요청 (추가된 로직)
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        '권한 필요',
+        '사진을 업로드하려면 갤러리 접근 권한이 필요합니다.\n설정에서 권한을 허용해주세요.',
+        [
+          { text: '취소', style: 'cancel' },
+          { text: '설정으로 이동', onPress: () => Linking.openSettings() } // ✨ 설정창으로 이동
+        ]
+      );
+      return;
+    }
+
+    // 3. 이미지 선택 (다중 선택)
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
+      allowsEditing: false, 
+      allowsMultipleSelection: true, 
+      selectionLimit: MAX_IMAGES - selectedImages.length, 
       quality: 0.5, 
     });
 
-    if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
+    if (!result.canceled && result.assets.length > 0) {
+      const newUris = result.assets.map(asset => asset.uri);
+      setSelectedImages(prev => [...prev, ...newUris]);
     }
   };
 
-  const uploadImage = async (uri: string) => {
-    // ✨ [최적화] 이미 URL이면 업로드 스킵
+  const removeImage = (indexToRemove: number) => {
+    setSelectedImages(prev => prev.filter((_, index) => index !== indexToRemove));
+  };
+
+  const uploadSingleImage = async (uri: string) => {
+    // 이미 URL이면 업로드 스킵
     if (uri.startsWith('http')) return uri;
 
     try {
       const response = await fetch(uri);
       const blob = await response.blob();
       
-      const filename = `lost-and-found/${Date.now()}.jpg`; 
+      const filename = `lost-and-found/${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`; 
       const storageRef = ref(storage, filename);
       
       await uploadBytes(storageRef, blob);
@@ -72,7 +105,7 @@ export default function CreateLostItemScreen() {
       return downloadURL;
     } catch (e) {
       console.error("이미지 업로드 실패:", e);
-      throw e;
+      return null;
     }
   };
 
@@ -88,24 +121,24 @@ export default function CreateLostItemScreen() {
     }
 
     setLoading(true);
+    setUploadingImage(true);
 
     try {
-      let imageUrl = null;
-      if (imageUri) {
-        imageUrl = await uploadImage(imageUri);
-        if (!imageUrl && imageUri.startsWith('http') === false) {
-            Alert.alert("오류", "이미지 업로드 실패");
-            setLoading(false);
-            return;
-        }
-      }
+      // 다중 이미지 병렬 업로드
+      const uploadPromises = selectedImages.map(uri => uploadSingleImage(uri));
+      const uploadedUrls = await Promise.all(uploadPromises);
+      const validUrls = uploadedUrls.filter((url): url is string => url !== null);
+      
+      // 첫 번째 이미지를 대표 이미지로 사용
+      const mainImageUrl = validUrls.length > 0 ? validUrls[0] : null;
 
       const itemData = {
         type: mode,
         itemName: itemName.trim(),
         description: description.trim(),
         location: lostLocation.trim(),
-        imageUrl: imageUrl, 
+        imageUrl: mainImageUrl, // 대표 이미지
+        imageUrls: validUrls,   // 전체 이미지 배열
         status: 'unresolved',
         creatorId: user.uid,
         creatorName: user.displayName || '익명',
@@ -127,6 +160,7 @@ export default function CreateLostItemScreen() {
       }
     } finally {
       setLoading(false);
+      setUploadingImage(false);
     }
   };
 
@@ -141,23 +175,36 @@ export default function CreateLostItemScreen() {
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         
-        <TouchableOpacity onPress={pickImage} style={styles.imagePicker}>
-          {imageUri ? (
-            <Image source={{ uri: imageUri }} style={styles.previewImage} />
-          ) : (
-            <View style={styles.imagePlaceholder}>
-              <Ionicons name="camera" size={40} color="#ccc" />
-              <Text style={styles.imagePlaceholderText}>사진 추가하기</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-        
-        {/* ✨ 이미지 삭제 버튼 추가 */}
-        {imageUri && (
-            <TouchableOpacity onPress={() => setImageUri(null)} style={styles.removeImageButton}>
-                <Text style={styles.removeImageButtonText}>이미지 삭제</Text>
-            </TouchableOpacity>
-        )}
+        {/* 이미지 리스트 영역 */}
+        <View style={styles.imageSection}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.imageList}>
+                {selectedImages.length < MAX_IMAGES && (
+                    <TouchableOpacity 
+                        style={styles.addImageButton} 
+                        onPress={pickImage}
+                        disabled={loading}
+                    >
+                        <Ionicons name="camera" size={30} color="#ccc" />
+                        <Text style={styles.addImageText}>
+                            {selectedImages.length}/{MAX_IMAGES}
+                        </Text>
+                    </TouchableOpacity>
+                )}
+
+                {selectedImages.map((uri, index) => (
+                    <View key={index} style={styles.imageItemWrapper}>
+                        <Image source={{ uri }} style={styles.imageItem} />
+                        <TouchableOpacity 
+                            style={styles.deleteButton} 
+                            onPress={() => removeImage(index)}
+                            disabled={loading}
+                        >
+                            <Ionicons name="close" size={12} color="#fff" />
+                        </TouchableOpacity>
+                    </View>
+                ))}
+            </ScrollView>
+        </View>
 
         <Text style={styles.label}>{itemNameLabel}</Text>
         <TextInput
@@ -221,10 +268,20 @@ const styles = StyleSheet.create({
   registerButton: { paddingVertical: 18, borderRadius: 10, alignItems: 'center', marginTop: 30, elevation: 5 },
   disabledButton: { backgroundColor: '#ccc' },
   registerButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  imagePicker: { width: '100%', height: 200, backgroundColor: '#f0f0f0', borderRadius: 12, marginBottom: 10, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#ddd', borderStyle: 'dashed' },
-  previewImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  imagePlaceholder: { alignItems: 'center' },
-  imagePlaceholderText: { color: '#888', marginTop: 8, fontSize: 14 },
-  removeImageButton: { backgroundColor: '#dc3545', paddingVertical: 8, paddingHorizontal: 15, borderRadius: 8, alignSelf: 'flex-start', marginBottom: 10 },
-  removeImageButtonText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+  
+  imageSection: { marginBottom: 10 },
+  imageList: { gap: 10, paddingRight: 20 },
+  addImageButton: { 
+    width: 80, height: 80, 
+    borderRadius: 8, borderWidth: 1, borderColor: '#ddd', borderStyle: 'dashed',
+    justifyContent: 'center', alignItems: 'center', backgroundColor: '#f9f9f9' 
+  },
+  addImageText: { fontSize: 12, color: '#aaa', marginTop: 4 },
+  imageItemWrapper: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', position: 'relative' },
+  imageItem: { width: '100%', height: '100%', resizeMode: 'cover' },
+  deleteButton: {
+      position: 'absolute', top: 4, right: 4,
+      width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.6)',
+      justifyContent: 'center', alignItems: 'center', zIndex: 1
+  },
 });

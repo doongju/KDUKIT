@@ -13,6 +13,7 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  Linking, // ✨ 추가: 설정 이동 기능
   Modal,
   Platform,
   ScrollView,
@@ -104,8 +105,19 @@ export default function CreateMarketScreen() {
         return;
     }
 
+    // ✨ [수정] 권한 확인 및 설정 이동 로직 추가
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('권한 필요', '사진 접근 권한이 필요합니다.'); return; }
+    if (status !== 'granted') {
+      Alert.alert(
+        '권한 필요',
+        '사진을 업로드하려면 갤러리 접근 권한이 필요합니다.\n설정에서 권한을 허용해주세요.',
+        [
+          { text: '취소', style: 'cancel' },
+          { text: '설정으로 이동', onPress: () => Linking.openSettings() } // 설정창 이동
+        ]
+      );
+      return;
+    }
 
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,

@@ -6,11 +6,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking, // ✨ 추가
   Modal,
   Platform,
   ScrollView,
@@ -65,7 +66,6 @@ export default function CreateClubScreen() {
           setIsCustomLimit(true); 
       }
       
-      // ✨ [수정 1] 기존 이미지 세팅 (http 체크)
       const initImg = params.initialImageUrl as string;
       if (initImg && initImg.startsWith('http')) {
           setImageUrl(initImg);
@@ -91,8 +91,19 @@ export default function CreateClubScreen() {
   const pickImage = async () => {
     if (!currentUser) { Alert.alert("로그인 필요", "로그인이 필요합니다."); return; }
 
+    // ✨ [수정] 권한 확인 및 설정 이동 로직 추가
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('권한 필요', '사진 라이브러리 접근 권한이 필요합니다.'); return; }
+    if (status !== 'granted') {
+      Alert.alert(
+        '권한 필요',
+        '사진을 업로드하려면 갤러리 접근 권한이 필요합니다.\n설정에서 권한을 허용해주세요.',
+        [
+          { text: '취소', style: 'cancel' },
+          { text: '설정으로 이동', onPress: () => Linking.openSettings() } // 설정창 이동
+        ]
+      );
+      return;
+    }
 
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -107,7 +118,7 @@ export default function CreateClubScreen() {
   const uploadImage = async (uri: string): Promise<string | null> => {
     if (!currentUser) return null; 
     
-    // ✨ [수정 2] 이미 URL이면 업로드 스킵
+    // 이미 URL이면 업로드 스킵
     if (uri.startsWith('http') || uri.startsWith('https')) {
         return uri;
     }
@@ -160,7 +171,6 @@ export default function CreateClubScreen() {
 
     setCreatingPost(true);
     
-    // ✨ [수정 3] 이미지 주소 결정 로직 (기존 URL 유지)
     let finalImageUrl: string | null = imageUrl; 
 
     if (imageUrl && !imageUrl.startsWith('http')) {
@@ -206,7 +216,6 @@ export default function CreateClubScreen() {
     } catch (error: any) {
       console.error("Error saving club post:", error);
       
-      // ✨ [수정 4] 차단된 사용자에게 친절한 메시지
       if (error.code === 'permission-denied' || error.message.includes('permission-denied')) {
         Alert.alert("이용 제한 🚫", "신고 누적(5회 이상)으로 인해 게시글 작성이 제한되었습니다.\n관리자에게 문의해주세요.");
       } else {
@@ -322,7 +331,6 @@ export default function CreateClubScreen() {
           )}
         </TouchableOpacity>
         
-        {/* ✨ 이미지 삭제 버튼 */}
         {imageUrl && !uploadingImage && (
           <TouchableOpacity onPress={() => setImageUrl(null)} style={styles.removeImageButton}>
             <Text style={styles.removeImageButtonText}>이미지 삭제</Text>
