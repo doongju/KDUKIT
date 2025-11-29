@@ -108,7 +108,7 @@ export default function CreateMarketScreen() {
     if (status !== 'granted') { Alert.alert('권한 필요', '사진 접근 권한이 필요합니다.'); return; }
 
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: (ImagePicker as any).MediaType.Images,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false, 
       allowsMultipleSelection: true,
       selectionLimit: MAX_IMAGES - selectedImages.length,
