@@ -58,7 +58,7 @@ export default function TabLayout() {
         options={{
           title: '택시 파티',
           href: null,
-          headerShown: true,
+          headerShown: false,
         }}
       />
 

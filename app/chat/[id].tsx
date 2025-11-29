@@ -288,7 +288,7 @@ const ChatRoomScreen: React.FC = () => {
         <KeyboardAvoidingView
           style={styles.container}
           behavior="padding"
-          keyboardVerticalOffset={160}
+          keyboardVerticalOffset={60}
         >
           <FlatList
             ref={flatListRef}
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
   myText: { color: 'white', fontSize: 15 },
   otherText: { color: '#333', fontSize: 15 },
   timestamp: { fontSize: 11, color: '#999', textAlign: 'right' },
-  readCountText: { fontSize: 11, color: '#ffc107', fontWeight: 'bold', textAlign: 'right', marginBottom: 2 },
+  readCountText: { fontSize: 11, color: '#1c40f3ff', fontWeight: 'bold', textAlign: 'right', marginBottom: 2 },
   inputWrapper: { backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#eee', paddingTop: 8, paddingHorizontal: 10 },
   inputContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
   input: { flex: 1, minHeight: 50, maxHeight: 120, borderWidth: 1, borderColor: '#0000', borderRadius: 25, paddingHorizontal: 20, paddingVertical: 10, marginRight: 10, backgroundColor: '#f9f9f9', fontSize: 16 },
