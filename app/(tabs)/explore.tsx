@@ -74,13 +74,13 @@ const ExploreScreen: React.FC = () => {
   // --- 기능 이동 핸들러 ---
   const handleFeaturePress = (featureName: string) => {
     switch (featureName) {
-      case '택시 파티':
+      case '택시파티':
         router.push('/(tabs)/taxiparty');
         break;
       case '동아리 모집':
         router.push('/(tabs)/clublist');
         break;
-      case '중고 마켓':
+      case '중고장터':
         router.push('/(tabs)/marketlist');
         break;
       case '셔틀버스':
@@ -260,8 +260,8 @@ const ExploreScreen: React.FC = () => {
         {/* ✨ 여기에 분실물 센터를 포함하여 아이콘 5개를 배치합니다 ✨ */}
         <View style={styles.gridContainer}>
           {[
-            { name: '중고 마켓', icon: 'cart', color: '#4CAF50' },
-            { name: '택시 파티', icon: 'car', color: '#2196F3' },
+            { name: '중고장터', icon: 'cart', color: '#4CAF50' },
+            { name: '택시파티', icon: 'car', color: '#2196F3' },
             { name: '동아리 모집', icon: 'people', color: '#FF9800' },
             { name: '셔틀버스', icon: 'bus', color: '#9C27B0' },
             { name: '분실물 센터', icon: 'search', color: '#FF5252' }, // 🔥 추가됨
