@@ -57,7 +57,6 @@ interface TaxiPartyPreview {
   creatorId: string;
 }
 
-// ✨ [추가] 분실물 타입 정의
 interface LostItemPreview {
   id: string;
   itemName: string;
@@ -65,6 +64,16 @@ interface LostItemPreview {
   type: 'lost' | 'found';
   imageUrl?: string;
   createdAt: any;
+}
+
+// ✨ [추가] 동아리 타입 정의
+interface ClubPreview {
+  id: string;
+  clubName: string;
+  activityField: string;
+  imageUrl?: string;
+  currentMembers: string[];
+  memberLimit: number;
 }
 
 // 요일 변환 헬퍼
@@ -99,7 +108,6 @@ const ExploreScreen: React.FC = () => {
         router.push('/(tabs)/lost-and-found');
         break;
       default:
-        // Alert.alert('준비 중', '곧 오픈될 예정입니다!');
         break;
     }
   };
@@ -107,12 +115,14 @@ const ExploreScreen: React.FC = () => {
   // --- 상태 관리 ---
   const [todayClasses, setTodayClasses] = useState<TimetableItem[]>([]);
   const [onlineClasses, setOnlineClasses] = useState<TimetableItem[]>([]);
+  
   const [recentMarketItems, setRecentMarketItems] = useState<MarketPreview[]>([]);
   const [recentTaxiParties, setRecentTaxiParties] = useState<TaxiPartyPreview[]>([]);
-  
-  // ✨ [수정] 최신 분실물 1개만 관리하므로 배열이 아닌 단일 객체(또는 null)로 관리
   const [recentLostItem, setRecentLostItem] = useState<LostItemPreview | null>(null);
   
+  // ✨ [추가] 최근 동아리 상태
+  const [recentClubs, setRecentClubs] = useState<ClubPreview[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -190,11 +200,11 @@ const ExploreScreen: React.FC = () => {
       setRecentTaxiParties(activeParties);
     });
 
-    // ✨ [수정] 4. 최신 분실물 (딱 1개만 가져오기)
+    // 4. 최신 분실물 (1개)
     const lostQuery = query(
       collection(db, 'lostAndFoundItems'),
       orderBy('createdAt', 'desc'),
-      limit(1) // ✨ 1개만 제한
+      limit(1)
     );
 
     const unsubLost = onSnapshot(lostQuery, (snapshot) => {
@@ -207,7 +217,23 @@ const ExploreScreen: React.FC = () => {
       } else {
         setRecentLostItem(null);
       }
-      // 로딩 종료 처리
+    });
+
+    // ✨ [추가] 5. 최신 동아리 모집 (5개)
+    const clubQuery = query(
+      collection(db, 'clubPosts'),
+      orderBy('createdAt', 'desc'),
+      limit(5)
+    );
+
+    const unsubClub = onSnapshot(clubQuery, (snapshot) => {
+      const clubs = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as ClubPreview[];
+      setRecentClubs(clubs);
+      
+      // 로딩 종료 (마지막 쿼리에서 처리)
       setLoading(false);
       setRefreshing(false);
     });
@@ -217,6 +243,7 @@ const ExploreScreen: React.FC = () => {
       unsubMarket();
       unsubTaxi();
       unsubLost();
+      unsubClub(); // 해제 추가
     };
   };
 
@@ -242,7 +269,6 @@ const ExploreScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* 상단 헤더 */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <Text style={styles.logoText}>KDUKIT</Text>
         <TouchableOpacity onPress={() => router.push('/profile')}>
@@ -278,7 +304,6 @@ const ExploreScreen: React.FC = () => {
           </View>
         )}
 
-        {/* 온라인 강의 */}
         {onlineClasses.length > 0 && (
           <View style={{ marginTop: 10 }}>
             <Text style={[styles.subTitle, { marginBottom: 5 }]}>💻 온라인 강의</Text>
@@ -290,7 +315,7 @@ const ExploreScreen: React.FC = () => {
           </View>
         )}
 
-        {/* 2. 주요 기능 바로가기 (그리드) */}
+        {/* 2. 주요 기능 바로가기 */}
         <View style={styles.gridContainer}>
           {[
             { name: '중고장터', icon: 'cart', color: '#4CAF50' },
@@ -346,7 +371,7 @@ const ExploreScreen: React.FC = () => {
           </View>
         )}
 
-        {/* ✨ [추가] 4. 방금 올라온 분실물 (1개만 표시) */}
+        {/* 4. 최신 분실물 */}
         <View style={[styles.sectionHeader, { marginTop: 25 }]}>
           <Text style={styles.sectionTitle}>방금 올라온 분실물 📢</Text>
           <TouchableOpacity onPress={() => router.push('/(tabs)/lost-and-found')}>
@@ -357,10 +382,9 @@ const ExploreScreen: React.FC = () => {
         {recentLostItem ? (
           <View style={{ marginHorizontal: -20, paddingHorizontal: 20 }}>
             <TouchableOpacity
-              style={styles.marketCard} // 중고장터 카드 스타일 재사용
+              style={styles.marketCard}
               onPress={() => router.push(`/lost-item/${recentLostItem.id}`)}
             >
-              {/* 사진이 있으면 사진, 없으면 아이콘 */}
               {recentLostItem.imageUrl ? (
                 <Image source={{ uri: recentLostItem.imageUrl }} style={styles.marketImage} />
               ) : (
@@ -387,7 +411,44 @@ const ExploreScreen: React.FC = () => {
           </View>
         )}
 
-        {/* 5. 모집 중인 택시 파티 */}
+        {/* ✨ [추가] 5. 동아리 모집 */}
+        <View style={[styles.sectionHeader, { marginTop: 25 }]}>
+          <Text style={styles.sectionTitle}>동아리 모집 👥</Text>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/clublist')}>
+            <Text style={styles.moreText}>더보기</Text>
+          </TouchableOpacity>
+        </View>
+
+        {recentClubs.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20, paddingHorizontal: 20 }}>
+            {recentClubs.map((club) => (
+              <TouchableOpacity
+                key={club.id}
+                style={styles.marketCard} // 카드 스타일 재사용
+                onPress={() => router.push('/(tabs)/clublist')}
+              >
+                {club.imageUrl ? (
+                  <Image source={{ uri: club.imageUrl }} style={styles.marketImage} />
+                ) : (
+                  <View style={[styles.marketNoImage, { backgroundColor: '#fff3e0' }]}>
+                    <Ionicons name="people" size={24} color="#ff9800" />
+                  </View>
+                )}
+                <Text style={styles.marketTitle} numberOfLines={1}>{club.clubName}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                    <Text style={[styles.clubCategory, { color: '#ff9800' }]}>{club.activityField}</Text>
+                    <Text style={styles.clubMemberCount}> | {club.currentMembers?.length || 0}/{club.memberLimit}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>모집 중인 동아리가 없습니다.</Text>
+          </View>
+        )}
+
+        {/* 6. 모집 중인 택시 파티 */}
         <View style={[styles.sectionHeader, { marginTop: 25 }]}>
           <Text style={styles.sectionTitle}>지금 모집 중인 택시 🚕</Text>
           <TouchableOpacity onPress={() => router.push('/(tabs)/taxiparty')}>
@@ -462,9 +523,11 @@ type ExploreScreenStyles = {
   taxiBadgeText: TextStyle;
   emptyCard: ViewStyle;
   emptyText: TextStyle;
-  // ✨ 추가된 스타일
   lostTypeBadge: TextStyle;
   lostLocationText: TextStyle;
+  // ✨ 추가된 동아리 스타일
+  clubCategory: TextStyle;
+  clubMemberCount: TextStyle;
 };
 
 const styles = StyleSheet.create<ExploreScreenStyles>({
@@ -533,9 +596,12 @@ const styles = StyleSheet.create<ExploreScreenStyles>({
   marketTitle: { fontSize: 14, fontWeight: 'bold', color: '#333', marginBottom: 4 },
   marketPrice: { fontSize: 13, color: '#0062ffff', fontWeight: 'bold' },
 
-  // ✨ 추가된 분실물 스타일
   lostTypeBadge: { fontSize: 12, fontWeight: 'bold' },
   lostLocationText: { fontSize: 12, color: '#888' },
+
+  // ✨ 동아리 스타일
+  clubCategory: { fontSize: 12, fontWeight: 'bold' },
+  clubMemberCount: { fontSize: 12, color: '#888' },
 
   taxiCard: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 15,
