@@ -14,7 +14,6 @@ import {
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   ImageStyle,
   RefreshControl,
@@ -58,6 +57,16 @@ interface TaxiPartyPreview {
   creatorId: string;
 }
 
+// ✨ [추가] 분실물 타입 정의
+interface LostItemPreview {
+  id: string;
+  itemName: string;
+  location: string;
+  type: 'lost' | 'found';
+  imageUrl?: string;
+  createdAt: any;
+}
+
 // 요일 변환 헬퍼
 const getTodayDayString = () => {
   const days = ['일', '월', '화', '수', '목', '금', '토'];
@@ -90,7 +99,7 @@ const ExploreScreen: React.FC = () => {
         router.push('/(tabs)/lost-and-found');
         break;
       default:
-        Alert.alert('준비 중', '곧 오픈될 예정입니다!');
+        // Alert.alert('준비 중', '곧 오픈될 예정입니다!');
         break;
     }
   };
@@ -100,6 +109,10 @@ const ExploreScreen: React.FC = () => {
   const [onlineClasses, setOnlineClasses] = useState<TimetableItem[]>([]);
   const [recentMarketItems, setRecentMarketItems] = useState<MarketPreview[]>([]);
   const [recentTaxiParties, setRecentTaxiParties] = useState<TaxiPartyPreview[]>([]);
+  
+  // ✨ [수정] 최신 분실물 1개만 관리하므로 배열이 아닌 단일 객체(또는 null)로 관리
+  const [recentLostItem, setRecentLostItem] = useState<LostItemPreview | null>(null);
+  
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -140,7 +153,7 @@ const ExploreScreen: React.FC = () => {
       collection(db, 'marketPosts'),
       where('status', '==', '판매중'),
       orderBy('createdAt', 'desc'),
-      limit(10)
+      limit(5)
     );
 
     const unsubMarket = onSnapshot(marketQuery, (snapshot) => {
@@ -158,7 +171,7 @@ const ExploreScreen: React.FC = () => {
     const taxiQuery = query(
       collection(db, 'taxiParties'),
       orderBy('createdAt', 'desc'),
-      limit(10)
+      limit(5)
     );
 
     const unsubTaxi = onSnapshot(taxiQuery, (snapshot) => {
@@ -175,6 +188,26 @@ const ExploreScreen: React.FC = () => {
         )
         .slice(0, 2);
       setRecentTaxiParties(activeParties);
+    });
+
+    // ✨ [수정] 4. 최신 분실물 (딱 1개만 가져오기)
+    const lostQuery = query(
+      collection(db, 'lostAndFoundItems'),
+      orderBy('createdAt', 'desc'),
+      limit(1) // ✨ 1개만 제한
+    );
+
+    const unsubLost = onSnapshot(lostQuery, (snapshot) => {
+      if (!snapshot.empty) {
+        const doc = snapshot.docs[0];
+        setRecentLostItem({
+          id: doc.id,
+          ...doc.data(),
+        } as LostItemPreview);
+      } else {
+        setRecentLostItem(null);
+      }
+      // 로딩 종료 처리
       setLoading(false);
       setRefreshing(false);
     });
@@ -183,6 +216,7 @@ const ExploreScreen: React.FC = () => {
       unsubTimetable();
       unsubMarket();
       unsubTaxi();
+      unsubLost();
     };
   };
 
@@ -257,18 +291,17 @@ const ExploreScreen: React.FC = () => {
         )}
 
         {/* 2. 주요 기능 바로가기 (그리드) */}
-        {/* ✨ 여기에 분실물 센터를 포함하여 아이콘 5개를 배치합니다 ✨ */}
         <View style={styles.gridContainer}>
           {[
             { name: '중고장터', icon: 'cart', color: '#4CAF50' },
             { name: '택시파티', icon: 'car', color: '#2196F3' },
             { name: '동아리 모집', icon: 'people', color: '#FF9800' },
             { name: '셔틀버스', icon: 'bus', color: '#9C27B0' },
-            { name: '분실물 센터', icon: 'search', color: '#FF5252' }, // 🔥 추가됨
+            { name: '분실물 센터', icon: 'search', color: '#FF5252' },
           ].map((item, idx) => (
             <TouchableOpacity
               key={idx}
-              style={styles.gridItem} // 스타일에서 너비와 마진 조절
+              style={styles.gridItem}
               onPress={() => handleFeaturePress(item.name)}
             >
               <View style={[styles.iconCircle, { backgroundColor: item.color + '20' }]}>
@@ -313,7 +346,48 @@ const ExploreScreen: React.FC = () => {
           </View>
         )}
 
-        {/* 4. 모집 중인 택시 파티 */}
+        {/* ✨ [추가] 4. 방금 올라온 분실물 (1개만 표시) */}
+        <View style={[styles.sectionHeader, { marginTop: 25 }]}>
+          <Text style={styles.sectionTitle}>방금 올라온 분실물 📢</Text>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/lost-and-found')}>
+            <Text style={styles.moreText}>더보기</Text>
+          </TouchableOpacity>
+        </View>
+
+        {recentLostItem ? (
+          <View style={{ marginHorizontal: -20, paddingHorizontal: 20 }}>
+            <TouchableOpacity
+              style={styles.marketCard} // 중고장터 카드 스타일 재사용
+              onPress={() => router.push(`/lost-item/${recentLostItem.id}`)}
+            >
+              {/* 사진이 있으면 사진, 없으면 아이콘 */}
+              {recentLostItem.imageUrl ? (
+                <Image source={{ uri: recentLostItem.imageUrl }} style={styles.marketImage} />
+              ) : (
+                <View style={[styles.marketNoImage, { backgroundColor: recentLostItem.type === 'lost' ? '#ffebee' : '#e3f2fd' }]}>
+                  <Ionicons 
+                    name={recentLostItem.type === 'lost' ? "search" : "gift"} 
+                    size={24} 
+                    color={recentLostItem.type === 'lost' ? '#ff6b6b' : '#4d96ff'} 
+                  />
+                </View>
+              )}
+              <Text style={styles.marketTitle} numberOfLines={1}>{recentLostItem.itemName}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={[styles.lostTypeBadge, { color: recentLostItem.type === 'lost' ? '#ff6b6b' : '#4d96ff' }]}>
+                  {recentLostItem.type === 'lost' ? '분실' : '습득'}
+                </Text>
+                <Text style={styles.lostLocationText} numberOfLines={1}> | {recentLostItem.location}</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>최근 분실물 내역이 없습니다.</Text>
+          </View>
+        )}
+
+        {/* 5. 모집 중인 택시 파티 */}
         <View style={[styles.sectionHeader, { marginTop: 25 }]}>
           <Text style={styles.sectionTitle}>지금 모집 중인 택시 🚕</Text>
           <TouchableOpacity onPress={() => router.push('/(tabs)/taxiparty')}>
@@ -388,6 +462,9 @@ type ExploreScreenStyles = {
   taxiBadgeText: TextStyle;
   emptyCard: ViewStyle;
   emptyText: TextStyle;
+  // ✨ 추가된 스타일
+  lostTypeBadge: TextStyle;
+  lostLocationText: TextStyle;
 };
 
 const styles = StyleSheet.create<ExploreScreenStyles>({
@@ -423,23 +500,21 @@ const styles = StyleSheet.create<ExploreScreenStyles>({
   },
   onlineText: { fontSize: 14, color: '#333' },
 
-  // 🔥 수정된 그리드 컨테이너 스타일 (5개 아이콘 대응)
   gridContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap', // 줄바꿈 허용
-    justifyContent: 'flex-start', // 왼쪽 정렬 (5개일 때 모양 유지)
+    flexWrap: 'wrap', 
+    justifyContent: 'flex-start',
     marginVertical: 20,
-    marginHorizontal: -5, // 아이템 간격 보정
+    marginHorizontal: -5,
   },
-  // 🔥 수정된 그리드 아이템 스타일
   gridItem: {
     alignItems: 'center',
-    width: '20%', // 5개가 한 줄에 들어갈 수 있도록 너비 조정
+    width: '20%',
     paddingHorizontal: 5,
-    marginBottom: 15, // 줄바꿈 될 경우를 대비해 아래 여백 추가
+    marginBottom: 15,
   },
   iconCircle: {
-    width: 50, height: 50, // 크기 살짝 조절 (5개 배치 위해)
+    width: 50, height: 50,
     borderRadius: 25,
     justifyContent: 'center', alignItems: 'center',
     marginBottom: 8,
@@ -457,6 +532,10 @@ const styles = StyleSheet.create<ExploreScreenStyles>({
   },
   marketTitle: { fontSize: 14, fontWeight: 'bold', color: '#333', marginBottom: 4 },
   marketPrice: { fontSize: 13, color: '#0062ffff', fontWeight: 'bold' },
+
+  // ✨ 추가된 분실물 스타일
+  lostTypeBadge: { fontSize: 12, fontWeight: 'bold' },
+  lostLocationText: { fontSize: 12, color: '#888' },
 
   taxiCard: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 15,

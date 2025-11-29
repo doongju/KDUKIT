@@ -3,11 +3,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { memo, useCallback, useEffect, useState } from 'react'; // ✨ memo 추가
+import { memo, useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     BackHandler,
     FlatList,
+    Image, // ✨ Image 컴포넌트 추가
     RefreshControl,
     ScrollView,
     StyleSheet,
@@ -26,9 +27,10 @@ interface LostItem {
   location: string;
   createdAt: any;
   status: string;
+  imageUrl?: string; // ✨ 이미지 URL 필드 추가
 }
 
-// ✨ [최적화] 리스트 아이템 분리 (메모이제이션)
+// ✨ [수정] 리스트 아이템: 이미지가 있으면 사진을, 없으면 아이콘을 보여줌
 const ItemCard = memo(({ item, onPress }: { item: LostItem, onPress: (id: string) => void }) => {
     return (
       <TouchableOpacity 
@@ -36,13 +38,19 @@ const ItemCard = memo(({ item, onPress }: { item: LostItem, onPress: (id: string
           onPress={() => onPress(item.id)}
           activeOpacity={0.7}
       >
-          <View style={[styles.iconBox, item.type === 'lost' ? styles.lostIcon : styles.foundIcon]}>
-              <Ionicons 
-                  name={item.type === 'lost' ? "search" : "gift"} 
-                  size={24} 
-                  color="#fff" 
-              />
-          </View>
+          {/* ✨ 이미지 유무에 따른 분기 처리 */}
+          {item.imageUrl ? (
+            <Image source={{ uri: item.imageUrl }} style={styles.thumbnailImage} />
+          ) : (
+            <View style={[styles.iconBox, item.type === 'lost' ? styles.lostIcon : styles.foundIcon]}>
+                <Ionicons 
+                    name={item.type === 'lost' ? "search" : "gift"} 
+                    size={24} 
+                    color="#fff" 
+                />
+            </View>
+          )}
+
           <View style={styles.itemInfo}>
               <View style={styles.itemHeader}>
                   <Text style={[styles.typeTag, { color: item.type === 'lost' ? '#ff6b6b' : '#4d96ff' }]}>
@@ -148,7 +156,7 @@ export default function LostAndFoundScreen() {
                   </View>
               ) : (
                   <View style={styles.defaultHeaderContainer}>
-                      <Text style={styles.headerTitle}>분실물 센터</Text>
+                      <Text style={styles.headerTitle}>분실물 센터 📢</Text>
                       <TouchableOpacity 
                           onPress={() => setIsSearching(true)} 
                           style={styles.searchIconBtn}
@@ -222,7 +230,6 @@ export default function LostAndFoundScreen() {
                           )}
                       </View>
                   }
-                  // ✨ [최적화] 리스트 성능 옵션
                   initialNumToRender={8}
                   maxToRenderPerBatch={5}
                   windowSize={5}
@@ -256,9 +263,15 @@ const styles = StyleSheet.create({
   actionText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   listContent: { padding: 20, paddingBottom: 50, backgroundColor: '#f5f5f5' },
   itemCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, padding: 15, marginBottom: 12, elevation: 2, shadowColor: '#000', shadowOpacity: 0.1, shadowOffset: { width: 0, height: 1 } },
-  iconBox: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  
+  // ✨ [수정] 아이콘 박스 스타일 (이미지 없을 때)
+  iconBox: { width: 60, height: 60, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   lostIcon: { backgroundColor: '#ff6b6b' },
   foundIcon: { backgroundColor: '#4d96ff' },
+  
+  // ✨ [추가] 썸네일 이미지 스타일 (이미지 있을 때)
+  thumbnailImage: { width: 60, height: 60, borderRadius: 12, marginRight: 15, backgroundColor: '#eee', resizeMode: 'cover' },
+
   itemInfo: { flex: 1 },
   itemHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   typeTag: { fontSize: 12, fontWeight: 'bold' },

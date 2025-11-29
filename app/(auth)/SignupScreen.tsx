@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -62,23 +62,32 @@ export default function SignupScreen() {
   const [codeSent, setCodeSent] = useState(false);
   const [resendTimer, setResendTimer] = useState(0); 
   
+  // ✨ [추가] 인증 완료 여부 상태
+  const [isVerified, setIsVerified] = useState(false);
+  
   const [showIosPicker, setShowIosPicker] = useState(false);
 
   const router = useRouter();
 
+  // ✨ [수정] 타이머 로직: 인증 완료(isVerified)되면 타이머 중지
   useEffect(() => {
     let timerId: ReturnType<typeof setTimeout> | null = null; 
-    if (codeSent && resendTimer > 0) {
+    
+    // 코드가 전송되었고, 시간이 남았으며, 아직 인증되지 않았을 때만 타이머 작동
+    if (codeSent && resendTimer > 0 && !isVerified) {
       timerId = setTimeout(() => {
         setResendTimer(resendTimer - 1);
       }, 1000);
-    } else if (resendTimer === 0 && codeSent) {
+    } else if (resendTimer === 0 && codeSent && !isVerified) {
+      // 시간 초과 시
       setCodeSent(false);
+      setGeneratedCode(null); // 보안상 코드 초기화 권장
+      Alert.alert("시간 초과", "인증 시간이 만료되었습니다. 다시 시도해주세요.");
     }
     return () => {
       if (timerId) clearTimeout(timerId);
     };
-  }, [codeSent, resendTimer]);
+  }, [codeSent, resendTimer, isVerified]);
 
   const validateInitialInputs = () => {
     const nameRegex = /^[가-힣\s]{1,}$/; 
@@ -107,6 +116,8 @@ export default function SignupScreen() {
     if (!validateInitialInputs()) return;
 
     setSendingCode(true); 
+    setIsVerified(false); // 재전송 시 인증 상태 초기화
+    setVerificationCode(""); // 입력창 초기화
     setResendTimer(RESEND_TIME_SECONDS); 
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -143,8 +154,30 @@ export default function SignupScreen() {
     }
   };
 
+  // ✨ [추가] 인증번호 확인 버튼 핸들러
+  const handleCheckCode = () => {
+    if (!verificationCode) {
+      Alert.alert("알림", "인증번호를 입력해주세요.");
+      return;
+    }
+    if (verificationCode === generatedCode) {
+      setIsVerified(true); // 인증 성공 상태로 변경
+      setResendTimer(0); // 타이머 즉시 종료 (UI 상 00:00 처리 또는 숨김)
+      Alert.alert("인증 성공", "인증이 완료되었습니다. 비밀번호를 설정해주세요.");
+    } else {
+      Alert.alert("오류", "인증번호가 일치하지 않습니다.");
+    }
+  };
+
   const validateFinalInputs = () => {
     const passwordRegex = /^(?=.*[A-Za-z]).{6,}$/;
+    
+    // ✨ [수정] 인증 완료 여부 확인
+    if (!isVerified) {
+        Alert.alert("오류", "이메일 인증을 먼저 완료해주세요.");
+        return false;
+    }
+
     if (password !== confirmPw) {
       Alert.alert("오류", "비밀번호가 일치하지 않습니다.");
       return false;
@@ -152,10 +185,6 @@ export default function SignupScreen() {
     if (!passwordRegex.test(password)) {
         Alert.alert("오류", "비밀번호는 영문을 포함하여 6자리 이상이어야 합니다.");
         return false;
-    }
-    if (!verificationCode || verificationCode !== generatedCode) {
-      Alert.alert("오류", "인증번호가 올바르지 않습니다.");
-      return false;
     }
     return true;
   }
@@ -168,7 +197,6 @@ export default function SignupScreen() {
       const userCredential = await createUserWithEmailAndPassword(auth, fullEmail, password);
       const userId = userCredential.user.uid;
 
-      // ✨ [수정] 모든 필드 완벽 초기화
       await setDoc(doc(db, "users", userId), {
         name: name.trim(),
         nickname: nickname.trim(),
@@ -176,11 +204,10 @@ export default function SignupScreen() {
         email: fullEmail,
         createdAt: new Date().toISOString(),
         
-        // 👇 초기값 설정 (매우 중요)
-        trustScore: 50,      // 신뢰도 50점 시작
-        reportCount: 0,      // 신고 횟수 0회 시작
-        blockedUsers: [],    // 차단 목록 빈 배열
-        wishlist: []         // 찜 목록 빈 배열
+        trustScore: 50,      
+        reportCount: 0,      
+        blockedUsers: [],    
+        wishlist: []         
       });
       
       Alert.alert("회원가입 성공", "가입이 완료되었습니다!");
@@ -206,7 +233,6 @@ export default function SignupScreen() {
                 onValueChange={(itemValue) => setSelectedDepartment(itemValue)}
                 style={styles.picker}
                 itemStyle={styles.pickerItem}
-                // ✨ [추가] 안드로이드에서 아이템 목록 렌더링
                 mode="dropdown"
             >
                 {DEPARTMENTS.map((dept) => (
@@ -214,7 +240,7 @@ export default function SignupScreen() {
                         key={dept} 
                         label={dept} 
                         value={dept} 
-                        style={{ color: '#333', fontSize: 16 }} // 안드로이드 아이템 스타일
+                        style={{ color: '#333', fontSize: 16 }} 
                     />
                 ))}
             </Picker>
@@ -222,7 +248,6 @@ export default function SignupScreen() {
       );
     }
 
-    // iOS 코드는 그대로 유지
     return (
       <>
         <TouchableOpacity 
@@ -307,26 +332,39 @@ export default function SignupScreen() {
                 autoCapitalize="none"
                 keyboardType="email-address"
                 style={[styles.input, styles.emailIdInput]}
+                // ✨ 인증 완료되면 이메일 수정 불가
+                editable={!isVerified} 
             />
             <Text style={styles.emailDomainText}>{SCHOOL_DOMAIN}</Text>
         </View>
 
+        {/* ✨ [수정] 인증번호 입력 그룹 UI 로직 변경 */}
         <View style={styles.verificationGroup}>
           <TextInput
-            placeholder="인증번호"
+            placeholder={isVerified ? "인증이 완료되었습니다" : "인증번호"}
             placeholderTextColor="#A9A9A9"
             value={verificationCode}
             onChangeText={setVerificationCode}
-            editable={codeSent}
-            style={[styles.input, styles.verificationInput]}
+            // 인증 전이고 코드가 발송된 상태여야 입력 가능
+            editable={!isVerified && codeSent} 
+            style={[
+                styles.input, 
+                styles.verificationInput, 
+                isVerified && { backgroundColor: '#e8f5e9', color: '#2e7d32', fontWeight: 'bold' }
+            ]}
           />
           
-          {resendTimer > 0 ? (
+          {/* 버튼 로직 분기: 인증완료됨 -> (v)표시 / 시간감소중 -> 확인버튼 / 그외 -> 받기버튼 */}
+          {isVerified ? (
+             <View style={[styles.verifyButton, { backgroundColor: '#4caf50' }]}>
+                <Text style={styles.verifyButtonText}>완료</Text>
+             </View>
+          ) : resendTimer > 0 ? (
             <TouchableOpacity
-              style={[styles.verifyButton, styles.timerButton]}
-              disabled={true}
+              style={[styles.verifyButton, { backgroundColor: "#0062ffff" }]}
+              onPress={handleCheckCode}
             >
-              <Text style={styles.verifyButtonText}>{formatTime(resendTimer)}</Text>
+              <Text style={styles.verifyButtonText}>확인 ({formatTime(resendTimer)})</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -341,48 +379,51 @@ export default function SignupScreen() {
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.verifyButtonText}>
-                  {'인증번호 받기'}
+                  {codeSent ? '재전송' : '인증번호 받기'}
                 </Text>
               )}
             </TouchableOpacity>
           )}
         </View>
 
-        {resendTimer > 0 ? (
+        {/* 상태 메시지 표시 */}
+        {!isVerified && resendTimer > 0 && (
             <Text style={styles.statusText}>
-              인증번호가 전송되었습니다. {formatTime(resendTimer)} 남았습니다.
+              인증번호가 전송되었습니다. 입력 후 확인 버튼을 눌러주세요.
             </Text>
-        ) : codeSent ? ( 
-            <Text style={[styles.statusText, {color: '#0062ffff', fontWeight: 'bold'}]}>
-              인증번호를 받지 못하셨나요? 재전송 버튼을 눌러주세요.
-            </Text>
-        ) : (
+        )}
+        {!isVerified && !codeSent && (
              <Text style={[styles.statusText, {color: '#999'}]}>
                학교 이메일을 입력하고 인증번호를 받아주세요.
              </Text>
         )}
 
-        <TextInput
-          placeholder="비밀번호 (영문 포함 6자리 이상)"
-          placeholderTextColor="#A9A9A9"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          style={styles.input}
-        />
-        <TextInput
-          placeholder="비밀번호 확인"
-          placeholderTextColor="#A9A9A9"
-          value={confirmPw}
-          onChangeText={setConfirmPw}
-          secureTextEntry
-          style={styles.input}
-        />
+        {/* ✨ [수정] 비밀번호 입력란: 인증 완료 전에는 비활성화 */}
+        <View style={{ opacity: isVerified ? 1 : 0.5 }}>
+            <TextInput
+              placeholder={isVerified ? "비밀번호 (영문 포함 6자리 이상)" : "이메일 인증 후 입력 가능"}
+              placeholderTextColor="#A9A9A9"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              style={styles.input}
+              editable={isVerified} // 인증 완료 시에만 입력 가능
+            />
+            <TextInput
+              placeholder={isVerified ? "비밀번호 확인" : "이메일 인증 후 입력 가능"}
+              placeholderTextColor="#A9A9A9"
+              value={confirmPw}
+              onChangeText={setConfirmPw}
+              secureTextEntry
+              style={styles.input}
+              editable={isVerified} // 인증 완료 시에만 입력 가능
+            />
+        </View>
 
         <TouchableOpacity
-          style={[styles.button, loading && { backgroundColor: "#ccc" }]}
+          style={[styles.button, (loading || !isVerified) && { backgroundColor: "#ccc" }]}
           onPress={handleSignup}
-          disabled={loading}
+          disabled={loading || !isVerified}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
@@ -514,6 +555,7 @@ const styles = StyleSheet.create({
   verifyButtonText: {
     color: "#fff",
     fontWeight: "bold",
+    fontSize: 14,
   },
   statusText: {
     fontSize: 13,
