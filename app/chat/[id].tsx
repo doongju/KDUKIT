@@ -26,73 +26,73 @@ interface ChatRoom {
 
 // [최적화 1] 메시지 아이템
 const MessageItem = memo(({ item, isMyMessage, displayName, onPressAvatar, unreadCount }: any) => {
-    const displayTime = item.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const displayTime = item.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    return (
-      <View style={[styles.messageRow, isMyMessage ? styles.myMessageRow : styles.otherMessageRow]}>
-        {!isMyMessage && (
-          <View style={styles.avatarContainer}>
-            <TouchableOpacity onPress={() => onPressAvatar(item.senderId)} style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarText}>{displayName.charAt(0)}</Text>
-            </TouchableOpacity>
-            <Text style={styles.senderName} numberOfLines={1}>{displayName}</Text>
+  return (
+    <View style={[styles.messageRow, isMyMessage ? styles.myMessageRow : styles.otherMessageRow]}>
+      {!isMyMessage && (
+        <View style={styles.avatarContainer}>
+          <TouchableOpacity onPress={() => onPressAvatar(item.senderId)} style={styles.avatarPlaceholder}>
+            <Text style={styles.avatarText}>{displayName.charAt(0)}</Text>
+          </TouchableOpacity>
+          <Text style={styles.senderName} numberOfLines={1}>{displayName}</Text>
+        </View>
+      )}
+      <View style={[styles.messageContentWrapper, isMyMessage ? styles.myMessageContentWrapper : styles.otherMessageContentWrapper]}>
+        {isMyMessage && (
+          <View style={styles.statusAndTimeContainer}>
+            {unreadCount > 0 && <Text style={styles.readCountText}>{unreadCount}</Text>}
+            <Text style={styles.timestamp}>{displayTime}</Text>
           </View>
         )}
-        <View style={[styles.messageContentWrapper, isMyMessage ? styles.myMessageContentWrapper : styles.otherMessageContentWrapper]}>
-          {isMyMessage && (
-            <View style={styles.statusAndTimeContainer}>
-              {unreadCount > 0 && <Text style={styles.readCountText}>{unreadCount}</Text>}
-              <Text style={styles.timestamp}>{displayTime}</Text>
-            </View>
-          )}
-          <View style={isMyMessage ? styles.myBubble : styles.otherBubble}>
-            <Text style={isMyMessage ? styles.myText : styles.otherText}>{item.text}</Text>
-          </View>
-          {!isMyMessage && (
-            <View style={styles.statusAndTimeContainer}>
-              <Text style={styles.timestamp}>{displayTime}</Text>
-            </View>
-          )}
+        <View style={isMyMessage ? styles.myBubble : styles.otherBubble}>
+          <Text style={isMyMessage ? styles.myText : styles.otherText}>{item.text}</Text>
         </View>
+        {!isMyMessage && (
+          <View style={styles.statusAndTimeContainer}>
+            <Text style={styles.timestamp}>{displayTime}</Text>
+          </View>
+        )}
       </View>
-    );
+    </View>
+  );
 }, (prev, next) => {
-    return (
-        prev.item._id === next.item._id &&
-        prev.unreadCount === next.unreadCount &&
-        prev.displayName === next.displayName
-    );
+  return (
+    prev.item._id === next.item._id &&
+    prev.unreadCount === next.unreadCount &&
+    prev.displayName === next.displayName
+  );
 });
 MessageItem.displayName = "MessageItem";
 
 // [최적화 2] 입력창 분리
 const ChatInput = memo(({ onSend, bottomInset }: { onSend: (text: string) => void, bottomInset: number }) => {
-    const [text, setText] = useState('');
+  const [text, setText] = useState('');
 
-    const handleSend = () => {
-        if (text.trim() === '') return;
-        onSend(text);
-        setText(''); 
-    };
+  const handleSend = () => {
+    if (text.trim() === '') return;
+    onSend(text);
+    setText('');
+  };
 
-    const paddingBottom = Platform.OS === 'ios' ? bottomInset : 10;
+  const paddingBottom = Platform.OS === 'ios' ? bottomInset : 10;
 
-    return (
-        <View style={[styles.inputWrapper, { paddingBottom }]}>
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              value={text}
-              onChangeText={setText} 
-              placeholder="메시지를 입력하세요..."
-              multiline
-            />
-            <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-              <Text style={styles.sendButtonText}>전송</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-    );
+  return (
+    <View style={[styles.inputWrapper, { paddingBottom }]}>
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          value={text}
+          onChangeText={setText}
+          placeholder="메시지를 입력하세요..."
+          multiline
+        />
+        <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
+          <Text style={styles.sendButtonText}>전송</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 });
 ChatInput.displayName = "ChatInput";
 
@@ -107,7 +107,7 @@ const ChatRoomScreen: React.FC = () => {
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
   const [loading, setLoading] = useState(true);
   const [userDisplayNames, setUserDisplayNames] = useState<{ [uid: string]: string }>({});
-  
+
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [myBlockedUsers, setMyBlockedUsers] = useState<string[]>([]);
 
@@ -116,23 +116,24 @@ const ChatRoomScreen: React.FC = () => {
   const currentUserId = user?.uid;
   const flatListRef = useRef<FlatList>(null);
 
-  // 1. [수정됨] 읽음 처리는 별도 함수로 분리 (리스너 내부에서 호출 X)
+  // 1. 읽음 처리 함수
   const updateLastRead = useCallback(async () => {
     if (!chatRoomId || !currentUserId) return;
-    try { 
-        await updateDoc(doc(db, 'chatRooms', chatRoomId), { 
-            [`lastReadBy.${currentUserId}`]: serverTimestamp() 
-        }); 
+    try {
+      await updateDoc(doc(db, 'chatRooms', chatRoomId), {
+        [`lastReadBy.${currentUserId}`]: serverTimestamp()
+      });
     } catch (e) {
-        console.log("Update read failed", e);
+      console.log("Update read failed", e);
     }
   }, [chatRoomId, currentUserId]);
 
-  // 2. [수정됨] 채팅방 정보 리스너 (읽기만 수행)
+  // 2. 채팅방 정보 리스너
+  // [수정] navigation을 의존성에 추가하여 경고 제거
   useEffect(() => {
     if (!chatRoomId) return;
     const chatDocRef = doc(db, 'chatRooms', chatRoomId);
-    
+
     const unsubChat = onSnapshot(chatDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = { id: docSnap.id, ...docSnap.data() } as ChatRoom;
@@ -143,49 +144,55 @@ const ChatRoomScreen: React.FC = () => {
     });
 
     return () => unsubChat();
-  }, [chatRoomId]);
+  }, [chatRoomId, navigation]);
 
-  // 3. [추가됨] 멤버 이름 가져오기 (chatRoom이 변경될 때만 실행)
+  // 3. 멤버 이름 가져오기
+  // [수정] chatRoom 전체가 바뀔 때(읽음처리 등)마다 실행되지 않도록 'members' 배열만 문자열로 만들어 비교
+  const membersHash = JSON.stringify(chatRoom?.members || []);
+
   useEffect(() => {
     if (!chatRoom || !chatRoom.members) return;
 
     const fetchMissingNames = async () => {
-        // 이미 이름이 있는 유저는 제외
-        const missingMembers = chatRoom.members.filter(uid => !userDisplayNames[uid]);
-        if (missingMembers.length === 0) return;
+      // 의존성에 userDisplayNames가 들어갔으므로, 
+      // 여기서 실제로 없는지 체크 후 없으면 early return하여 무한루프 방지
+      const missingMembers = chatRoom.members.filter(uid => !userDisplayNames[uid]);
+      
+      if (missingMembers.length === 0) return;
 
-        const newNames: { [uid: string]: string } = {};
-        const promises = missingMembers.map(async (uid) => {
-            try {
-                const uSnap = await getDoc(doc(db, 'users', uid));
-                let name = '알 수 없음';
-                if (uSnap.exists()) {
-                    const d = uSnap.data();
-                    if (d.department) {
-                         if (d.email) {
-                             const prefix = d.email.split('@')[0];
-                             const two = prefix.substring(0, 2);
-                             if (!isNaN(Number(two)) && two.length === 2) name = `${two}학번 ${d.department}`;
-                             else name = `${prefix}님 ${d.department}`;
-                         } else { name = d.department; }
-                    } else if (d.displayName) name = d.displayName;
-                }
-                newNames[uid] = name;
-            } catch { newNames[uid] = '익명'; }
-        });
-        await Promise.all(promises);
-        setUserDisplayNames(prev => ({ ...prev, ...newNames }));
+      const newNames: { [uid: string]: string } = {};
+      const promises = missingMembers.map(async (uid) => {
+        try {
+          const uSnap = await getDoc(doc(db, 'users', uid));
+          let name = '알 수 없음';
+          if (uSnap.exists()) {
+            const d = uSnap.data();
+            if (d.department) {
+              if (d.email) {
+                const prefix = d.email.split('@')[0];
+                const two = prefix.substring(0, 2);
+                if (!isNaN(Number(two)) && two.length === 2) name = `${two}학번 ${d.department}`;
+                else name = `${prefix}님 ${d.department}`;
+              } else { name = d.department; }
+            } else if (d.displayName) name = d.displayName;
+          }
+          newNames[uid] = name;
+        } catch { newNames[uid] = '익명'; }
+      });
+      await Promise.all(promises);
+      setUserDisplayNames(prev => ({ ...prev, ...newNames }));
     };
 
     fetchMissingNames();
-  }, [chatRoom?.members]); // chatRoom 전체가 아니라 members 배열이 바뀔 때만
+  }, [membersHash, userDisplayNames, chatRoom]); 
+  // membersHash로 멤버 변경 감지, userDisplayNames는 로직 내 필터링으로 무한루프 방지됨
 
-  // 4. [추가됨] 메시지가 로드되거나 내가 메시지를 보내면 읽음 처리 업데이트
+  // 4. 메시지 읽음 처리 업데이트
   useEffect(() => {
     if (messages.length > 0) {
-        updateLastRead();
+      updateLastRead();
     }
-  }, [messages.length, updateLastRead]); // 메시지 개수가 변할 때만 실행
+  }, [messages.length, updateLastRead]);
 
   // 5. 메시지 & 차단 리스너
   useEffect(() => {
@@ -193,27 +200,28 @@ const ChatRoomScreen: React.FC = () => {
 
     const myDocRef = doc(db, 'users', currentUserId);
     const unsubBlock = onSnapshot(myDocRef, (docSnap) => {
-        if(docSnap.exists()) setMyBlockedUsers(docSnap.data().blockedUsers || []);
+      if (docSnap.exists()) setMyBlockedUsers(docSnap.data().blockedUsers || []);
     });
 
     const q = query(collection(db, 'chatRooms', chatRoomId, 'messages'), orderBy('createdAt', 'asc'));
     const unsubMsg = onSnapshot(q, (snapshot) => {
-        const msgs = snapshot.docs.map(doc => {
-            const d = doc.data();
-            return {
-                _id: doc.id,
-                text: d.text,
-                createdAt: d.createdAt?.toDate() || new Date(),
-                senderId: d.senderId,
-            } as IMessage;
-        });
-        setMessages(msgs);
-        setLoading(false);
+      const msgs = snapshot.docs.map(doc => {
+        const d = doc.data();
+        return {
+          _id: doc.id,
+          text: d.text,
+          createdAt: d.createdAt?.toDate() || new Date(),
+          senderId: d.senderId,
+        } as IMessage;
+      });
+      setMessages(msgs);
+      setLoading(false);
     });
 
     return () => { unsubBlock(); unsubMsg(); };
   }, [chatRoomId, currentUserId]);
 
+  // [수정] user 객체가 사용되므로 의존성에 추가
   const handleSend = useCallback(async (text: string) => {
     if (!user || !currentUserId) return;
     if (chatRoom && chatRoom.members.some(mid => myBlockedUsers.includes(mid) && mid !== currentUserId)) {
@@ -230,12 +238,11 @@ const ChatRoomScreen: React.FC = () => {
         lastMessage: text,
         lastMessageTimestamp: serverTimestamp(),
       });
-      // updateLastRead는 메시지 리스너(useEffect)에 의해 자동으로 처리되므로 여기서 굳이 호출 안 해도 됨
-      // 하지만 즉각적인 반응을 위해 남겨둬도 무방 (루프는 안 돔)
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (e) { console.error(e); }
-  }, [chatRoom, myBlockedUsers, chatRoomId, currentUserId]);
+  }, [chatRoom, myBlockedUsers, chatRoomId, currentUserId, user]);
 
+  // [수정] 렌더링 최적화
   const renderItem = useCallback(({ item }: { item: IMessage }) => {
     if (myBlockedUsers.includes(item.senderId)) return null;
     const isMyMessage = item.senderId === currentUserId;
@@ -249,7 +256,7 @@ const ChatRoomScreen: React.FC = () => {
       });
     }
     return (
-      <MessageItem 
+      <MessageItem
         item={item} isMyMessage={isMyMessage} displayName={displayName}
         onPressAvatar={setProfileUserId} unreadCount={unreadCount}
       />
@@ -262,20 +269,20 @@ const ChatRoomScreen: React.FC = () => {
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       {Platform.OS === 'android' ? (
         <View style={styles.container}>
-           <FlatList
-             ref={flatListRef}
-             data={messages}
-             keyExtractor={item => item._id}
-             renderItem={renderItem}
-             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-             style={styles.messageList}
-             contentContainerStyle={[styles.messageListContent, { paddingBottom: 10 }]}
-             initialNumToRender={15}
-             maxToRenderPerBatch={10}
-             windowSize={10}
-             removeClippedSubviews={true}
-           />
-           <ChatInput onSend={handleSend} bottomInset={0} />
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={item => item._id}
+            renderItem={renderItem}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            style={styles.messageList}
+            contentContainerStyle={[styles.messageListContent, { paddingBottom: 10 }]}
+            initialNumToRender={15}
+            maxToRenderPerBatch={10}
+            windowSize={10}
+            removeClippedSubviews={true}
+          />
+          <ChatInput onSend={handleSend} bottomInset={0} />
         </View>
       ) : (
         <KeyboardAvoidingView
