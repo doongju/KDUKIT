@@ -4,12 +4,26 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import ImageView from 'react-native-image-viewing'; // ✨ 추가
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import ImageView from 'react-native-image-viewing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import UserProfileModal from '../../components/UserProfileModal'; // ✨ 추가
+import UserProfileModal from '../../components/UserProfileModal';
 import { db } from '../../firebaseConfig';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CONTENT_PADDING = 20;
+const IMAGE_WIDTH = SCREEN_WIDTH - (CONTENT_PADDING * 2); // 패딩을 뺀 실제 이미지 너비
 
 interface ItemDetail {
   type: 'lost' | 'found';
@@ -17,6 +31,7 @@ interface ItemDetail {
   location: string;
   description: string;
   imageUrl?: string;
+  imageUrls?: string[]; // ✨ 여러 장의 이미지
   createdAt: any;
   creatorName?: string;
   creatorId: string;
@@ -30,8 +45,10 @@ export default function LostItemDetailScreen() {
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // ✨ 모달 상태들
+  // ✨ 이미지 뷰어 상태
   const [isImageViewerVisible, setIsImageViewerVisible] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0); // 현재 보고 있는 이미지 번호
+
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   
   const auth = getAuth();
@@ -93,12 +110,24 @@ export default function LostItemDetailScreen() {
     } catch (error) { Alert.alert("오류", "채팅방을 여는 중 문제가 발생했습니다."); }
   };
 
+  // ✨ 스크롤 시 현재 페이지 번호 업데이트
+  const handleScroll = (event: any) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / IMAGE_WIDTH);
+    setCurrentImageIndex(index);
+  };
+
   if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#0062ffff" /></View>;
   if (!item) return null;
 
   const isLost = item.type === 'lost';
   const themeColor = isLost ? '#ff6b6b' : '#4d96ff';
   const isOwner = user?.uid === item.creatorId;
+
+  // ✨ 이미지 목록 정리 (배열이 없으면 단일 이미지라도 배열로 만듦)
+  const images = item.imageUrls && item.imageUrls.length > 0 
+    ? item.imageUrls 
+    : (item.imageUrl ? [item.imageUrl] : []);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -116,11 +145,36 @@ export default function LostItemDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {item.imageUrl && (
-          <View style={styles.imageContainer}>
-            <TouchableOpacity onPress={() => setIsImageViewerVisible(true)}>
-                <Image source={{ uri: item.imageUrl }} style={styles.detailImage} />
-            </TouchableOpacity>
+        
+        {/* ✨ 이미지 슬라이드 영역 */}
+        {images.length > 0 && (
+          <View style={styles.imageWrapper}>
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={handleScroll} // 스크롤 끝나면 페이지 번호 업데이트
+              style={styles.imageScrollView}
+            >
+              {images.map((uri, index) => (
+                <TouchableOpacity 
+                  key={index} 
+                  activeOpacity={0.9} 
+                  onPress={() => setIsImageViewerVisible(true)}
+                >
+                  <Image source={{ uri }} style={styles.detailImage} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* 페이지 번호 표시 (1/3) */}
+            {images.length > 1 && (
+              <View style={styles.pageIndicator}>
+                <Text style={styles.pageIndicatorText}>
+                  {currentImageIndex + 1} / {images.length}
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -155,7 +209,6 @@ export default function LostItemDetailScreen() {
 
         <View style={styles.section}>
           <Text style={styles.label}>작성자</Text>
-          {/* ✨ 작성자 프로필 보기 버튼 */}
           <TouchableOpacity 
             style={styles.row} 
             onPress={() => setProfileUserId(item.creatorId)}
@@ -182,18 +235,17 @@ export default function LostItemDetailScreen() {
         )}
       </View>
 
-      {/* ✨ 이미지 확대 뷰어 */}
-      {item.imageUrl && (
+      {/* ✨ 이미지 확대 뷰어 (전체 사진 보기) */}
+      {images.length > 0 && (
         <ImageView
-          images={[{ uri: item.imageUrl }]}
-          imageIndex={0}
+          images={images.map(uri => ({ uri }))}
+          imageIndex={currentImageIndex} // 현재 보고 있는 사진부터 열기
           visible={isImageViewerVisible}
           onRequestClose={() => setIsImageViewerVisible(false)}
           swipeToCloseEnabled={true}
         />
       )}
 
-      {/* ✨ 프로필 모달 */}
       <UserProfileModal visible={!!profileUserId} userId={profileUserId} onClose={() => setProfileUserId(null)} />
     </View>
   );
@@ -205,9 +257,35 @@ const styles = StyleSheet.create({
   headerBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
   backButton: { padding: 10 },
   headerTitle: { fontSize: 20, fontWeight: 'bold', marginLeft: 5 },
-  content: { padding: 20, paddingBottom: 100 },
-  imageContainer: { width: '100%', height: 300, borderRadius: 12, overflow: 'hidden', marginBottom: 20, backgroundColor: '#f0f0f0', elevation: 3 },
-  detailImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  
+  content: { padding: CONTENT_PADDING, paddingBottom: 100 },
+  
+  // ✨ 이미지 슬라이드 스타일
+  imageWrapper: { 
+    width: IMAGE_WIDTH, 
+    height: 300, 
+    borderRadius: 12, 
+    overflow: 'hidden', 
+    marginBottom: 20, 
+    backgroundColor: '#f0f0f0', 
+    elevation: 3,
+    position: 'relative', // 페이지 번호를 위해
+  },
+  imageScrollView: { width: '100%', height: '100%' },
+  detailImage: { width: IMAGE_WIDTH, height: 300, resizeMode: 'cover' },
+  
+  // ✨ 페이지 번호 스타일 (우측 하단)
+  pageIndicator: {
+    position: 'absolute',
+    bottom: 15,
+    right: 15,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 15,
+  },
+  pageIndicatorText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+
   badgeRow: { flexDirection: 'row', marginBottom: 15, gap: 8 },
   badge: { paddingVertical: 4, paddingHorizontal: 12, borderRadius: 6 },
   badgeText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },

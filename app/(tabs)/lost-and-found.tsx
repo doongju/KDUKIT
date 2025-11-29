@@ -8,7 +8,7 @@ import {
     ActivityIndicator,
     BackHandler,
     FlatList,
-    Image, // ✨ Image 컴포넌트 추가
+    Image,
     RefreshControl,
     ScrollView,
     StyleSheet,
@@ -27,29 +27,52 @@ interface LostItem {
   location: string;
   createdAt: any;
   status: string;
-  imageUrl?: string; // ✨ 이미지 URL 필드 추가
+  imageUrl?: string;    // 대표 이미지 (하위 호환용)
+  imageUrls?: string[]; // ✨ 전체 이미지 목록
 }
 
-// ✨ [수정] 리스트 아이템: 이미지가 있으면 사진을, 없으면 아이콘을 보여줌
+// ✨ [수정] 리스트 아이템: 사진이 여러 장이면 가로 스크롤 가능
 const ItemCard = memo(({ item, onPress }: { item: LostItem, onPress: (id: string) => void }) => {
+    
+    // 보여줄 이미지 목록 정리 (imageUrls가 없으면 imageUrl 사용, 둘 다 없으면 빈 배열)
+    const images = item.imageUrls && item.imageUrls.length > 0 
+        ? item.imageUrls 
+        : (item.imageUrl ? [item.imageUrl] : []);
+
     return (
       <TouchableOpacity 
           style={styles.itemCard}
           onPress={() => onPress(item.id)}
-          activeOpacity={0.7}
+          activeOpacity={0.9} // 스크롤 중 실수로 눌리는 것 방지 위해 투명도 조절
       >
-          {/* ✨ 이미지 유무에 따른 분기 처리 */}
-          {item.imageUrl ? (
-            <Image source={{ uri: item.imageUrl }} style={styles.thumbnailImage} />
-          ) : (
-            <View style={[styles.iconBox, item.type === 'lost' ? styles.lostIcon : styles.foundIcon]}>
-                <Ionicons 
-                    name={item.type === 'lost' ? "search" : "gift"} 
-                    size={24} 
-                    color="#fff" 
-                />
-            </View>
-          )}
+          <View style={styles.topContainer}>
+            {/* ✨ 이미지가 있을 때: 가로 스크롤 뷰 렌더링 */}
+            {images.length > 0 ? (
+                <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false} 
+                    style={styles.imageScroll}
+                    contentContainerStyle={styles.imageScrollContent}
+                >
+                    {images.map((url, index) => (
+                        <Image 
+                            key={index} 
+                            source={{ uri: url }} 
+                            style={styles.thumbnailImage} 
+                        />
+                    ))}
+                </ScrollView>
+            ) : (
+                // 이미지가 없을 때: 기존 아이콘 박스
+                <View style={[styles.iconBox, item.type === 'lost' ? styles.lostIcon : styles.foundIcon]}>
+                    <Ionicons 
+                        name={item.type === 'lost' ? "search" : "gift"} 
+                        size={24} 
+                        color="#fff" 
+                    />
+                </View>
+            )}
+          </View>
 
           <View style={styles.itemInfo}>
               <View style={styles.itemHeader}>
@@ -63,7 +86,11 @@ const ItemCard = memo(({ item, onPress }: { item: LostItem, onPress: (id: string
               <Text style={styles.itemName} numberOfLines={1}>{item.itemName}</Text>
               <Text style={styles.locationText} numberOfLines={1}>{item.location}</Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#ccc" />
+          
+          {/* 화살표 아이콘 (우측 중앙 정렬) */}
+          <View style={styles.arrowContainer}>
+             <Ionicons name="chevron-forward" size={20} color="#ccc" />
+          </View>
       </TouchableOpacity>
     );
 });
@@ -156,7 +183,7 @@ export default function LostAndFoundScreen() {
                   </View>
               ) : (
                   <View style={styles.defaultHeaderContainer}>
-                      <Text style={styles.headerTitle}>분실물 센터 📢</Text>
+                      <Text style={styles.headerTitle}>분실물 센터</Text>
                       <TouchableOpacity 
                           onPress={() => setIsSearching(true)} 
                           style={styles.searchIconBtn}
@@ -262,22 +289,45 @@ const styles = StyleSheet.create({
   actionFound: { backgroundColor: '#4d96ff' },
   actionText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   listContent: { padding: 20, paddingBottom: 50, backgroundColor: '#f5f5f5' },
-  itemCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, padding: 15, marginBottom: 12, elevation: 2, shadowColor: '#000', shadowOpacity: 0.1, shadowOffset: { width: 0, height: 1 } },
   
-  // ✨ [수정] 아이콘 박스 스타일 (이미지 없을 때)
-  iconBox: { width: 60, height: 60, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  // ✨ [수정] 카드 레이아웃 스타일 개선
+  itemCard: { 
+      flexDirection: 'row', // 가로 배치 유지하되 내부에서 구역 나눔
+      alignItems: 'center', 
+      backgroundColor: '#fff', 
+      borderRadius: 12, 
+      padding: 12, 
+      marginBottom: 12, 
+      elevation: 2, 
+      shadowColor: '#000', 
+      shadowOpacity: 0.1, 
+      shadowOffset: { width: 0, height: 1 } 
+  },
+  
+  // 왼쪽 영역 (이미지 또는 아이콘)
+  topContainer: { marginRight: 15 },
+
+  // 이미지 없을 때 아이콘 박스
+  iconBox: { width: 65, height: 65, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   lostIcon: { backgroundColor: '#ff6b6b' },
   foundIcon: { backgroundColor: '#4d96ff' },
   
-  // ✨ [추가] 썸네일 이미지 스타일 (이미지 있을 때)
-  thumbnailImage: { width: 60, height: 60, borderRadius: 12, marginRight: 15, backgroundColor: '#eee', resizeMode: 'cover' },
+  // ✨ [추가] 이미지 가로 스크롤 스타일
+  imageScroll: { width: 70, height: 70 }, // 스크롤 영역 크기 지정
+  imageScrollContent: { alignItems: 'center' },
+  thumbnailImage: { width: 65, height: 65, borderRadius: 12, marginRight: 8, backgroundColor: '#eee', resizeMode: 'cover' },
 
-  itemInfo: { flex: 1 },
+  // 가운데 정보 영역
+  itemInfo: { flex: 1, justifyContent: 'center' },
   itemHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   typeTag: { fontSize: 12, fontWeight: 'bold' },
   dateText: { fontSize: 12, color: '#999' },
   itemName: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 2 },
   locationText: { fontSize: 14, color: '#666' },
+  
+  // 오른쪽 화살표 영역
+  arrowContainer: { justifyContent: 'center', paddingLeft: 5 },
+
   emptyContainer: { alignItems: 'center', marginTop: 50 },
   emptyText: { color: '#999', fontSize: 16, marginTop: 10 },
 });
