@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import {
   arrayRemove,
-  arrayUnion, // ✅ 예약 취소를 위해 추가
+  arrayUnion,
   doc,
   onSnapshot,
   setDoc
@@ -30,8 +30,7 @@ interface ScheduleItem {
   note?: string;
 }
 
-// ... SHUTTLE_DATA 선언 부 ... 
-// (코드 길이 절약을 위해 생략, 기존 데이터 그대로 사용)
+// 기존 데이터 유지
 const SHUTTLE_DATA: Record<RouteName, Record<Direction, ScheduleItem[]>> = {
   '도봉산역': {
     toSchool: [
@@ -107,11 +106,35 @@ const ShuttleScreen = () => {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
 
+  // ✅ 1. 페널티 관련 상태 추가
+  const [penaltyEndTime, setPenaltyEndTime] = useState<number | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+
   const todayStr = useMemo(() => {
     return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
   }, [now]);
 
-  // 테스트용 고정 시간 (04:35, 04:40)
+  // 페널티 타이머 로직
+  useEffect(() => {
+    if (!penaltyEndTime) return;
+
+    const interval = setInterval(() => {
+      const current = Date.now();
+      const diff = Math.ceil((penaltyEndTime - current) / 1000);
+
+      if (diff <= 0) {
+        setPenaltyEndTime(null);
+        setSecondsLeft(0);
+        clearInterval(interval);
+      } else {
+        setSecondsLeft(diff);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [penaltyEndTime]);
+
+  // 테스트용 고정 시간
   const getTestSchedules = (): ScheduleItem[] => {
     return [
       { time: '04:35', note: 'TEST (곧 도착)' },
@@ -185,7 +208,6 @@ const ShuttleScreen = () => {
     };
   }, [user, todayStr, selectedRoute, direction, upcomingSchedule.length]);
 
-  // --- 1. 예약 함수 ---
   const handleReserve = async (time: string) => {
     if (!user) return;
     try {
@@ -207,20 +229,22 @@ const ShuttleScreen = () => {
     }
   };
 
-  // --- 2. 예약 취소 함수 (추가됨) ---
   const handleCancel = async (time: string) => {
     if (!user) return;
     try {
       const docId = `${todayStr}_${selectedRoute}_${direction}_${time}`;
       const docRef = doc(db, 'shuttle_reservations', docId);
 
-      // arrayRemove를 사용하여 멤버 명단에서 제거
       await setDoc(docRef, {
         members: arrayRemove(user.uid),
         updatedAt: new Date(),
       }, { merge: true });
       
-      Alert.alert('취소 완료', '예약이 취소되었습니다.');
+      // ✅ 2. 취소 시 페널티 적용 (60초)
+      setPenaltyEndTime(Date.now() + 60000);
+      setSecondsLeft(60);
+
+      Alert.alert('취소 완료', '예약이 취소되었습니다.\n(1분간 재예약이 불가능합니다.)');
     } catch (error) {
       console.error(error);
       Alert.alert('오류', '취소 중 문제가 발생했습니다.');
@@ -247,26 +271,42 @@ const ShuttleScreen = () => {
     let buttonAction = () => {};
     let disabled = true;
 
+    // ✅ 페널티 활성화 여부 확인
+    const isPenaltyActive = penaltyEndTime !== null && secondsLeft > 0;
+
     if (isOpen) {
       if (info.isReserved) {
-        // 예약된 상태: 취소 버튼 보여주기
+        // 이미 예약한 경우: 취소 가능
         buttonText = "예약 취소";
-        buttonColor = "#ef5350"; // 빨간색
+        buttonColor = "#ef5350"; 
         buttonAction = () => handleCancel(item.time);
         disabled = false;
       } else {
-        // 예약 안 된 상태: 예약 버튼 보여주기
-        buttonText = "승차 예약";
-        buttonColor = "#0062ffff"; // 파란색
-        buttonAction = () => handleReserve(item.time);
-        disabled = false;
+        // 예약 안 한 경우
+        if (!isMain) {
+            // ✅ 가장 가까운 버스가 아니면 예약 불가
+            buttonText = "순차 예약";
+            buttonColor = "#ccc";
+            disabled = true;
+        } else if (isPenaltyActive) {
+            // ✅ 페널티 시간 중이면 예약 불가
+            buttonText = `예약 제한 (${secondsLeft}초)`;
+            buttonColor = "#999";
+            disabled = true;
+        } else {
+            // 예약 가능
+            buttonText = "승차 예약";
+            buttonColor = "#0062ffff"; 
+            buttonAction = () => handleReserve(item.time);
+            disabled = false;
+        }
       }
     } else {
       buttonText = `출발 ${minsLeft > 60 ? Math.floor(minsLeft/60)+'시간 ' : ''}${minsLeft%60}분 전`;
     }
 
-    // ✅ 대기 인원 표시 로직: 예약했으면 실제 숫자, 안 했으면 0명
-    const displayCount = info.isReserved ? info.count : 0;
+    // ✅ 인원 표시 로직: 예약했으면 숫자 보임, 안 했으면 비공개
+    const displayCountText = info.isReserved ? `${info.count}명` : '예약 후 확인';
 
     return (
       <View 
@@ -297,9 +337,9 @@ const ShuttleScreen = () => {
         <View style={styles.cardBody}>
           <View style={styles.statusRow}>
             <Text style={styles.statusLabel}>현재 대기 인원</Text>
-            <Text style={styles.statusValue}>
-              {/* 오픈 전이면 '-', 오픈 됐으면 (예약 여부에 따라 0 or 실제값) */}
-              {isOpen ? `${displayCount}명` : '-'}
+            <Text style={[styles.statusValue, !info.isReserved && { fontSize: 14, color: '#888' }]}>
+              {/* 오픈 전이면 '-', 오픈 됐으면 예약 여부에 따라 표시 */}
+              {isOpen ? displayCountText : '-'}
             </Text>
           </View>
 
@@ -317,6 +357,7 @@ const ShuttleScreen = () => {
 
   return (
     <View style={styles.container}>
+      {/* ... 헤더 부분 동일 ... */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={28} color="#333" />
@@ -326,6 +367,7 @@ const ShuttleScreen = () => {
       </View>
 
       <View style={styles.contentContainer}>
+        {/* ... 탭 메뉴 부분 동일 ... */}
         <View style={styles.fixedHeader}>
           <View style={styles.tabContainer}>
             {(['도봉산역', '양주역', '의정부중앙역'] as RouteName[]).map((route) => (
@@ -366,11 +408,13 @@ const ShuttleScreen = () => {
             {nearestBus ? (
               <>
                 <Text style={styles.sectionTitle}>Next Shuttle 🚌</Text>
+                {/* 가장 가까운 버스는 isMain = true */}
                 {renderBusCard(nearestBus, true)}
                 
                 {nextBuses.length > 0 && (
                   <>
                     <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Upcoming</Text>
+                    {/* 그 외 버스는 isMain = false */}
                     {nextBuses.map(bus => renderBusCard(bus, false))}
                   </>
                 )}
@@ -394,6 +438,7 @@ const ShuttleScreen = () => {
 export default ShuttleScreen;
 
 const styles = StyleSheet.create({
+  // ... 기존 스타일 동일 ...
   container: { flex: 1, backgroundColor: '#f8f9fa' },
   contentContainer: { flex: 1 },
   header: {
