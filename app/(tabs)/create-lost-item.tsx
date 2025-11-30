@@ -6,12 +6,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler, // ✨ 추가: 안드로이드 뒤로가기 제어
   Image,
-  Linking, // ✨ 추가: 설정으로 이동하기 위해 필요
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,7 +23,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db, storage } from '../../firebaseConfig';
 
-const MAX_IMAGES = 5; // 최대 이미지 개수 제한 (5장)
+const MAX_IMAGES = 5;
 
 export default function CreateLostItemScreen() {
   const insets = useSafeAreaInsets();
@@ -44,19 +45,29 @@ export default function CreateLostItemScreen() {
   const [description, setDescription] = useState('');
   const [lostLocation, setLostLocation] = useState('');
   
-  // 여러 장의 이미지를 관리하기 위한 배열 상태
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
 
+  // ✨ [추가] 뒤로가기 핸들러 (무조건 분실물 목록으로 이동)
+  const handleBack = () => {
+    // replace를 사용하여 스택에 쌓이지 않고 깔끔하게 이동
+    router.replace('/(tabs)/lost-and-found');
+    return true; // 안드로이드 BackHandler를 위해 true 반환
+  };
+
+  // ✨ [추가] 하드웨어 뒤로가기 버튼(안드로이드) 제어
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBack);
+    return () => backHandler.remove();
+  }, []);
+
   const pickImage = async () => {
-    // 1. 최대 개수 체크
     if (selectedImages.length >= MAX_IMAGES) {
         Alert.alert("알림", `최대 ${MAX_IMAGES}장까지만 등록 가능합니다.`);
         return;
     }
 
-    // 2. ✨ 권한 확인 및 요청 (추가된 로직)
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert(
@@ -64,13 +75,12 @@ export default function CreateLostItemScreen() {
         '사진을 업로드하려면 갤러리 접근 권한이 필요합니다.\n설정에서 권한을 허용해주세요.',
         [
           { text: '취소', style: 'cancel' },
-          { text: '설정으로 이동', onPress: () => Linking.openSettings() } // ✨ 설정창으로 이동
+          { text: '설정으로 이동', onPress: () => Linking.openSettings() }
         ]
       );
       return;
     }
 
-    // 3. 이미지 선택 (다중 선택)
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false, 
@@ -90,7 +100,6 @@ export default function CreateLostItemScreen() {
   };
 
   const uploadSingleImage = async (uri: string) => {
-    // 이미 URL이면 업로드 스킵
     if (uri.startsWith('http')) return uri;
 
     try {
@@ -124,12 +133,10 @@ export default function CreateLostItemScreen() {
     setUploadingImage(true);
 
     try {
-      // 다중 이미지 병렬 업로드
       const uploadPromises = selectedImages.map(uri => uploadSingleImage(uri));
       const uploadedUrls = await Promise.all(uploadPromises);
       const validUrls = uploadedUrls.filter((url): url is string => url !== null);
       
-      // 첫 번째 이미지를 대표 이미지로 사용
       const mainImageUrl = validUrls.length > 0 ? validUrls[0] : null;
 
       const itemData = {
@@ -137,8 +144,8 @@ export default function CreateLostItemScreen() {
         itemName: itemName.trim(),
         description: description.trim(),
         location: lostLocation.trim(),
-        imageUrl: mainImageUrl, // 대표 이미지
-        imageUrls: validUrls,   // 전체 이미지 배열
+        imageUrl: mainImageUrl, 
+        imageUrls: validUrls,   
         status: 'unresolved',
         creatorId: user.uid,
         creatorName: user.displayName || '익명',
@@ -148,6 +155,7 @@ export default function CreateLostItemScreen() {
       await addDoc(collection(db, "lostAndFoundItems"), itemData);
       
       Alert.alert('등록 완료', '성공적으로 등록되었습니다.', [
+        // 등록 완료 시에도 목록으로 이동
         { text: '확인', onPress: () => router.replace('/(tabs)/lost-and-found') }
       ]);
 
@@ -167,7 +175,8 @@ export default function CreateLostItemScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.headerBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        {/* ✨ [수정] 뒤로가기 버튼에 handleBack 연결 */}
+        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={28} color={primaryColor} /> 
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: primaryColor }]}>{title}</Text>
@@ -175,7 +184,6 @@ export default function CreateLostItemScreen() {
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         
-        {/* 이미지 리스트 영역 */}
         <View style={styles.imageSection}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.imageList}>
                 {selectedImages.length < MAX_IMAGES && (

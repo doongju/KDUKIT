@@ -10,8 +10,9 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler, // ✨ 추가: 뒤로가기 제어용
   Image,
-  Linking, // ✨ 추가
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -48,6 +49,18 @@ export default function CreateClubScreen() {
 
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [modalType, setModalType] = useState<'activityField' | 'memberLimit' | null>(null);
+
+  // ✨ [추가] 뒤로가기 핸들러 (무조건 동아리 목록으로 이동)
+  const handleBack = () => {
+    router.replace('/(tabs)/clublist');
+    return true; // 안드로이드 하드웨어 백버튼 제어용
+  };
+
+  // ✨ [추가] 하드웨어 뒤로가기 버튼(안드로이드) 리스너 등록
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBack);
+    return () => backHandler.remove();
+  }, []);
 
   // 초기화 및 데이터 채우기
   useEffect(() => {
@@ -91,7 +104,6 @@ export default function CreateClubScreen() {
   const pickImage = async () => {
     if (!currentUser) { Alert.alert("로그인 필요", "로그인이 필요합니다."); return; }
 
-    // ✨ [수정] 권한 확인 및 설정 이동 로직 추가
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert(
@@ -99,7 +111,7 @@ export default function CreateClubScreen() {
         '사진을 업로드하려면 갤러리 접근 권한이 필요합니다.\n설정에서 권한을 허용해주세요.',
         [
           { text: '취소', style: 'cancel' },
-          { text: '설정으로 이동', onPress: () => Linking.openSettings() } // 설정창 이동
+          { text: '설정으로 이동', onPress: () => Linking.openSettings() } 
         ]
       );
       return;
@@ -118,7 +130,6 @@ export default function CreateClubScreen() {
   const uploadImage = async (uri: string): Promise<string | null> => {
     if (!currentUser) return null; 
     
-    // 이미 URL이면 업로드 스킵
     if (uri.startsWith('http') || uri.startsWith('https')) {
         return uri;
     }
@@ -211,6 +222,7 @@ export default function CreateClubScreen() {
         Alert.alert("등록 완료", "모집글이 등록되었습니다.");
       }
       
+      // ✨ [수정] 작성 완료 후에도 동아리 목록으로 이동
       router.replace('/(tabs)/clublist');
 
     } catch (error: any) {
@@ -250,7 +262,8 @@ export default function CreateClubScreen() {
   return (
     <SafeAreaView style={[styles.container, { paddingTop: 0 }]}>
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}> 
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        {/* ✨ [수정] 뒤로가기 버튼 onPress에 handleBack 연결 */}
+        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={28} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{params.postId ? "모집글 수정" : "새 동아리 모집 글쓰기"}</Text>
@@ -331,6 +344,7 @@ export default function CreateClubScreen() {
           )}
         </TouchableOpacity>
         
+        {/* 이미지 삭제 버튼 */}
         {imageUrl && !uploadingImage && (
           <TouchableOpacity onPress={() => setImageUrl(null)} style={styles.removeImageButton}>
             <Text style={styles.removeImageButtonText}>이미지 삭제</Text>
