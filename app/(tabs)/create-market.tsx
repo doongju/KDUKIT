@@ -233,7 +233,7 @@ export default function CreateMarketScreen() {
         <TouchableOpacity onPress={handleBack} style={styles.headerButton}>
           <Ionicons name="close" size={28} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{params.postId ? "게시글 수정" : "내 물건 팔기"}</Text>
+        <Text style={styles.headerTitle}>{params.postId ? "게시글 수정" : "물건 팔기"}</Text>
         <TouchableOpacity onPress={handleSave} disabled={isSubmitting} style={styles.headerButton}>
            {isSubmitting ? (
              <ActivityIndicator size="small" color="#0062ffff" />

@@ -1,143 +1,126 @@
 // app/(tabs)/_layout.tsx
 
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 
 export default function TabLayout() {
+  const activeColor = '#0062ffff'; // 브랜드 컬러
+  const inactiveColor = '#999';
+
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#0062ffff',
         headerShown: false,
-        tabBarStyle: Platform.select({
-          ios: {
-            position: 'absolute',
-          },
-          default: {},
-        }),
-      }}>
-
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: '홈',
-          tabBarIcon: ({ color }) => <Ionicons size={28} name="home" color={color} />,
-        }}
-      />
-      
+        tabBarActiveTintColor: activeColor,
+        tabBarInactiveTintColor: inactiveColor,
+        tabBarShowLabel: true,
+        tabBarStyle: {
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          elevation: 0,
+          backgroundColor: '#ffffff',
+          borderTopColor: '#f0f0f0',
+          borderTopWidth: 1,
+          height: Platform.OS === 'ios' ? 85 : 70,
+          paddingBottom: Platform.OS === 'ios' ? 25 : 10,
+          paddingTop: 10,
+        },
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '600',
+          marginTop: 4,
+        },
+      }}
+    >
+      {/* 1. [시간표] 탭 (파일명: timetable.tsx) */}
       <Tabs.Screen
         name="timetable"
         options={{
           title: '시간표',
-          tabBarIcon: ({ color }) => <Ionicons size={28} name="calendar" color={color} />, 
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={26} color={color} />
+          ),
         }}
       />
-      
+
+      {/* 2. [셔틀] 탭 (파일명: shuttle.tsx) */}
+      <Tabs.Screen
+        name="shuttle"
+        options={{
+          title: '셔틀',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'bus' : 'bus-outline'} size={26} color={color} />
+          ),
+        }}
+      />
+
+      {/* 3. [홈] 탭 (파일명: explore.tsx) - 가운데 큰 버튼 */}
+      <Tabs.Screen
+        name="explore"
+        options={{
+          title: '홈',
+          tabBarLabelStyle: { display: 'none' }, // 라벨 숨김
+          tabBarIcon: ({ focused }) => (
+            <View
+              style={{
+                top: Platform.OS === 'ios' ? -20 : -25, // 위로 띄우기
+                width: 66,
+                height: 66,
+                borderRadius: 33,
+                backgroundColor: '#0062ffff',
+                justifyContent: 'center',
+                alignItems: 'center',
+                shadowColor: '#0062ffff',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.4,
+                shadowRadius: 5,
+                elevation: 5,
+              }}
+            >
+              <Ionicons name="home" size={30} color="#ffffff" />
+            </View>
+          ),
+        }}
+      />
+
+      {/* 4. [채팅] 탭 (파일명: chatlist.tsx) */}
+      {/* 중요: 파일명이 chatlist이므로 name도 "chatlist"여야 합니다 */}
       <Tabs.Screen
         name="chatlist"
         options={{
           title: '채팅',
-          tabBarIcon: ({ color }) => <Ionicons size={28} name="chatbubbles" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'chatbubbles' : 'chatbubbles-outline'} size={26} color={color} />
+          ),
         }}
       />
 
+      {/* 5. [내 정보] 탭 (파일명: profile.tsx) */}
       <Tabs.Screen
         name="profile"
         options={{
           title: '내 정보',
-          tabBarIcon: ({ color }) => <Ionicons size={28} name="person" color={color} />, 
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={26} color={color} />
+          ),
         }}
       />
 
-      {/* --- 탭 바에 보이지 않는 숨겨진 경로들 --- */}
-
-      {/* ⚠️ 택시 파티 목록 화면 */}
-      <Tabs.Screen
-        name="taxiparty"
-        options={{
-          title: '택시 파티',
-          href: null,
-          headerShown: false,
-        }}
-      />
-
-      {/* ⚠️ 새로운 파티 생성 화면 */}
-      <Tabs.Screen
-        name="create-party"
-        options={{
-          title: '새 파티 만들기',
-          href: null,
-          headerShown: false,
-        }}
-      />
-
-      <Tabs.Screen
-        name="clublist" 
-        options={{
-          title: '동아리 모집',
-          href: null,
-          headerShown: false,
-        }}
-      />
-
-      <Tabs.Screen
-        name="create-club" 
-        options={{
-          title: '클럽 만들기',
-          href: null,
-          headerShown: false,
-        }}
-      />
-
-      <Tabs.Screen
-        name="create-market" 
-        options={{
-          title: '마켓 만들기',
-          href: null,
-          headerShown: false,
-        }}
-      />
-
-      <Tabs.Screen
-        name="marketlist" 
-        options={{
-          title: '마켓 목록',
-          href: null,
-          headerShown: false,
-        }}
-      />
-
-      {/* 👇 [분실물 센터] */}
-      <Tabs.Screen 
-        name="lost-and-found"
-        options={{ 
-          title: "분실물 센터",
-          href: null,
-          headerShown: false,
-        }} 
-      />
-
-      {/* 👇 [분실물 등록] */}
-      <Tabs.Screen 
-        name="create-lost-item"
-        options={{ 
-          title: "분실물 등록",
-          href: null,
-          headerShown: false,
-        }} 
-      />
-
-      {/* 👇 [셔틀버스] (새로 추가됨) */}
-      <Tabs.Screen 
-        name="shuttle" // 파일명: app/(tabs)/shuttle.tsx
-        options={{ 
-          title: "셔틀버스",
-          href: null, // 탭 바에서 숨기기 (홈 화면 아이콘으로 진입)
-          headerShown: false, // shuttle.tsx 내부에 헤더가 있으므로 시스템 헤더 숨김
-        }} 
-      />
-
+      {/* ★★★ 나머지 파일 숨기기 (href: null) ★★★ 
+        스크린샷에 있는 파일명들을 정확히 기재했습니다.
+      */}
+      <Tabs.Screen name="clublist" options={{ href: null }} />
+      <Tabs.Screen name="create-club" options={{ href: null }} />
+      <Tabs.Screen name="create-lost-item" options={{ href: null }} />
+      <Tabs.Screen name="create-market" options={{ href: null }} />
+      <Tabs.Screen name="create-party" options={{ href: null }} />
+      <Tabs.Screen name="lost-and-found" options={{ href: null }} />
+      <Tabs.Screen name="marketlist" options={{ href: null }} />
+      <Tabs.Screen name="taxiparty" options={{ href: null }} />
+      
     </Tabs>
   );
 }
