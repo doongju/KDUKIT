@@ -19,7 +19,7 @@ import {
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
 // ✨ 토큰 발급 함수 임포트
-import { registerForPushNotificationsAsync } from '../utils/registerForPushNotificationsAsync';
+import { registerForPushNotificationsAsync } from '../../utils/registerForPushNotificationsAsync';
 
 const DEPARTMENTS = [
     '학과 선택', 

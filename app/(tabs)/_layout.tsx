@@ -66,7 +66,7 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => (
             <View
               style={{
-                top: Platform.OS === 'ios' ? -20 : -25, // 위로 띄우기
+                top: Platform.OS === 'ios' ? -10 : -15, // 위로 띄우기
                 width: 66,
                 height: 66,
                 borderRadius: 33,

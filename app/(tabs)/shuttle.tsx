@@ -5,8 +5,10 @@ import {
   arrayRemove,
   arrayUnion,
   doc,
+  increment,
   onSnapshot,
-  setDoc
+  setDoc,
+  updateDoc
 } from 'firebase/firestore';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -21,7 +23,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
-// ... (데이터 타입 및 SHUTTLE_DATA 등 위쪽 코드는 기존과 동일하므로 생략) ...
+// --- 데이터 타입 정의 ---
 type RouteName = '도봉산역' | '양주역' | '의정부중앙역';
 type Direction = 'toSchool' | 'toStation';
 
@@ -30,7 +32,7 @@ interface ScheduleItem {
   note?: string;
 }
 
-// 기존 데이터 유지
+// --- 🚍 버스 시간표 데이터 ---
 const SHUTTLE_DATA: Record<RouteName, Record<Direction, ScheduleItem[]>> = {
   '도봉산역': {
     toSchool: [
@@ -80,10 +82,12 @@ const SHUTTLE_DATA: Record<RouteName, Record<Direction, ScheduleItem[]>> = {
 };
 
 interface ShuttleStatus {
-  count: number;
-  isReserved: boolean;
+  totalCount: number; // 예약자 + 탑승자
+  isReserved: boolean; // 예약 명단에 있는가?
+  isBoarded: boolean;  // 이미 탑승 했는가?
 }
 
+// --- 유틸리티 함수 ---
 const isRunningOnDay = (note: string | undefined, dayOfWeek: number) => {
   if (dayOfWeek === 0 || dayOfWeek === 6) return false; 
   if (!note) return true;
@@ -91,6 +95,34 @@ const isRunningOnDay = (note: string | undefined, dayOfWeek: number) => {
     if (note.includes('금X') || note.includes('월~목')) return false;
   }
   return true;
+};
+
+// 🚍 버스 운행 대수 계산 함수
+const getBusCount = (route: RouteName, direction: Direction, time: string, day: number): number => {
+  if (day === 0 || day === 6) return 0; 
+
+  if (route === '도봉산역') {
+    if (direction === 'toSchool') {
+      if (time === '08:50') return day === 5 ? 1 : 3; 
+      if (time === '09:50') return day === 5 ? 0 : 3; 
+      if (time === '10:50') return day === 5 ? 0 : 2; 
+    } else {
+      if (time === '16:30') return day === 5 ? 0 : 2;
+      if (time === '17:30') return day === 5 ? 1 : 2;
+      if (time === '18:30') return day === 5 ? 0 : 1;
+    }
+  }
+  if (route === '양주역') {
+    if (direction === 'toSchool') {
+        if (time === '08:45' && day === 5) return 0;
+    } else {
+        if (time === '17:40' && day === 5) return 0;
+    }
+    return 1;
+  }
+  if (route === '의정부중앙역') return 1;
+
+  return 1;
 };
 
 const ShuttleScreen = () => {
@@ -106,22 +138,23 @@ const ShuttleScreen = () => {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
 
-  // ✅ 1. 페널티 관련 상태 추가
+  // 페널티 및 신뢰도 관련 상태
   const [penaltyEndTime, setPenaltyEndTime] = useState<number | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
+  const [myCancelCount, setMyCancelCount] = useState(0); 
+  const [myTrustScore, setMyTrustScore] = useState(100); 
+  const [lastCancelDate, setLastCancelDate] = useState<string>(""); 
 
   const todayStr = useMemo(() => {
     return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
   }, [now]);
 
-  // 페널티 타이머 로직
+  // 페널티 타이머
   useEffect(() => {
     if (!penaltyEndTime) return;
-
     const interval = setInterval(() => {
       const current = Date.now();
       const diff = Math.ceil((penaltyEndTime - current) / 1000);
-
       if (diff <= 0) {
         setPenaltyEndTime(null);
         setSecondsLeft(0);
@@ -130,15 +163,39 @@ const ShuttleScreen = () => {
         setSecondsLeft(diff);
       }
     }, 1000);
-
     return () => clearInterval(interval);
   }, [penaltyEndTime]);
 
-  // 테스트용 고정 시간
+  // 유저 정보 감시
+  useEffect(() => {
+    if (!user) return;
+    const userRef = doc(db, 'users', user.uid);
+    
+    const unsub = onSnapshot(userRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const storedDate = data.lastCancelDate || "";
+        
+        if (storedDate !== todayStr) {
+            setMyCancelCount(0);
+        } else {
+            setMyCancelCount(data.cancelCount || 0);
+        }
+        
+        setLastCancelDate(storedDate);
+        setMyTrustScore(data.trustScore !== undefined ? data.trustScore : 100);
+      } else {
+        setDoc(userRef, { cancelCount: 0, trustScore: 100, lastCancelDate: todayStr }, { merge: true });
+      }
+    });
+    return () => unsub();
+  }, [user, todayStr]);
+
+  // 테스트 데이터
   const getTestSchedules = (): ScheduleItem[] => {
     return [
-      { time: '04:35', note: 'TEST (곧 도착)' },
-      { time: '04:40', note: 'TEST (다음 차)' },
+      { time: '02:05', note: 'TEST (곧 도착)' },
+      { time: '02:08', note: 'TEST (다음 차)' },
     ];
   };
 
@@ -168,6 +225,7 @@ const ShuttleScreen = () => {
   const nearestBus = upcomingSchedule.length > 0 ? upcomingSchedule[0] : null;
   const nextBuses = upcomingSchedule.length > 1 ? upcomingSchedule.slice(1) : [];
 
+  // 셔틀 예약 현황 실시간 감시
   useEffect(() => {
     if (!user) return;
     setLoading(true);
@@ -183,17 +241,20 @@ const ShuttleScreen = () => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           const members = data.members || [];
+          const boarded = data.boarded || [];
+
           setStatusMap((prev) => ({
             ...prev,
             [item.time]: {
-              count: members.length,
+              totalCount: members.length + boarded.length,
               isReserved: members.includes(user.uid),
+              isBoarded: boarded.includes(user.uid),
             },
           }));
         } else {
           setStatusMap((prev) => ({
             ...prev,
-            [item.time]: { count: 0, isReserved: false },
+            [item.time]: { totalCount: 0, isReserved: false, isBoarded: false },
           }));
         }
       });
@@ -208,6 +269,7 @@ const ShuttleScreen = () => {
     };
   }, [user, todayStr, selectedRoute, direction, upcomingSchedule.length]);
 
+  // --- 예약 함수 ---
   const handleReserve = async (time: string) => {
     if (!user) return;
     try {
@@ -222,32 +284,115 @@ const ShuttleScreen = () => {
         time: time
       }, { merge: true });
       
-      Alert.alert('예약 성공', '탑승 대기열에 등록되었습니다.');
+      Alert.alert('예약 성공', '승차 예약되었습니다.\n(탑승 후에는 꼭 [탑승 완료]를 눌러주세요!)');
     } catch (error) {
       console.error(error);
       Alert.alert('오류', '예약 중 문제가 발생했습니다.');
     }
   };
 
+  // 탑승 완료 함수
+  const handleBoarding = async (time: string) => {
+    if (!user) return;
+    try {
+        const docId = `${todayStr}_${selectedRoute}_${direction}_${time}`;
+        const shuttleRef = doc(db, 'shuttle_reservations', docId);
+        
+        await setDoc(shuttleRef, {
+            members: arrayRemove(user.uid),
+            boarded: arrayUnion(user.uid), 
+            updatedAt: new Date(),
+        }, { merge: true });
+
+        Alert.alert("탑승 확인", "탑승 처리가 완료되었습니다.\n즐거운 등하교길 되세요! 👋");
+
+    } catch (error) {
+        console.error(error);
+        Alert.alert("오류", "처리 중 문제가 발생했습니다.");
+    }
+  };
+
+  // 예약 취소 함수
   const handleCancel = async (time: string) => {
     if (!user) return;
     try {
       const docId = `${todayStr}_${selectedRoute}_${direction}_${time}`;
-      const docRef = doc(db, 'shuttle_reservations', docId);
-
-      await setDoc(docRef, {
+      const shuttleRef = doc(db, 'shuttle_reservations', docId);
+      
+      await setDoc(shuttleRef, {
         members: arrayRemove(user.uid),
         updatedAt: new Date(),
       }, { merge: true });
+
+      const userRef = doc(db, 'users', user.uid);
       
-      // ✅ 2. 취소 시 페널티 적용 (60초)
+      if (lastCancelDate !== todayStr) {
+          await updateDoc(userRef, {
+              cancelCount: 1, 
+              lastCancelDate: todayStr
+          });
+          Alert.alert('취소 완료', '예약이 취소되었습니다.\n(60초간 재예약 불가)');
+      } else {
+          if (myCancelCount >= 3) {
+            await updateDoc(userRef, {
+                cancelCount: increment(1),
+                trustScore: increment(-10) 
+            });
+            Alert.alert('신뢰도 차감', '반복된 취소로 신뢰도가 차감되었습니다.');
+          } else {
+            await updateDoc(userRef, {
+                cancelCount: increment(1)
+            });
+            Alert.alert('취소 완료', '예약이 취소되었습니다.\n(60초간 재예약 불가)');
+          }
+      }
+      
       setPenaltyEndTime(Date.now() + 60000);
       setSecondsLeft(60);
 
-      Alert.alert('취소 완료', '예약이 취소되었습니다.\n(1분간 재예약이 불가능합니다.)');
     } catch (error) {
       console.error(error);
       Alert.alert('오류', '취소 중 문제가 발생했습니다.');
+    }
+  };
+
+  // 액션 시트
+  const handleActionSheet = (time: string) => {
+    Alert.alert(
+        "상태 변경",
+        "버스를 탑승하셨나요, 아니면 예약을 취소하시나요?",
+        [
+            { 
+                text: "닫기", 
+                style: "cancel" 
+            },
+            { 
+                text: "예약 취소 (못 탐)", 
+                style: "destructive", 
+                onPress: () => confirmCancel(time) 
+            },
+            { 
+                text: "🚌 탑승 완료", 
+                onPress: () => handleBoarding(time) 
+            }
+        ]
+    );
+  };
+
+  const confirmCancel = (time: string) => {
+    const effectiveCount = (lastCancelDate !== todayStr) ? 0 : myCancelCount;
+
+    if (effectiveCount >= 3) {
+        Alert.alert(
+            "⚠️ 신뢰도 차감 경고", 
+            `오늘 이미 ${effectiveCount}회 취소하셨습니다.\n취소 시 '신뢰도'가 차감됩니다.`, 
+            [
+              { text: "아니요", style: "cancel" },
+              { text: "네 (차감 동의)", style: "destructive", onPress: () => handleCancel(time) }
+            ]
+        );
+    } else {
+        handleCancel(time);
     }
   };
 
@@ -259,44 +404,53 @@ const ShuttleScreen = () => {
     return Math.floor(diffMs / (1000 * 60));
   };
 
-  // --- 3. 카드 렌더링 수정 ---
+  // --- 카드 렌더링 ---
   const renderBusCard = (item: ScheduleItem, isMain: boolean) => {
-    const info = statusMap[item.time] || { count: 0, isReserved: false };
+    const dayOfWeek = now.getDay();
+    const busCount = getBusCount(selectedRoute, direction, item.time, dayOfWeek);
+    
+    if (busCount === 0) return null;
+
+    const BUS_CAPACITY = 45;
+    const totalCapacity = busCount * BUS_CAPACITY;
+
+    const info = statusMap[item.time] || { totalCount: 0, isReserved: false, isBoarded: false };
     const minsLeft = getMinutesLeft(item.time);
     const isOpen = minsLeft <= 30 && minsLeft >= 0;
     const isTest = item.note?.includes('TEST'); 
     
+    const isFull = info.totalCount >= totalCapacity;
+
     let buttonText = "예약 대기";
     let buttonColor = "#ccc";
     let buttonAction = () => {};
     let disabled = true;
 
-    // ✅ 페널티 활성화 여부 확인
     const isPenaltyActive = penaltyEndTime !== null && secondsLeft > 0;
 
     if (isOpen) {
-      if (info.isReserved) {
-        // 이미 예약한 경우: 취소 가능
-        buttonText = "예약 취소";
+      if (info.isBoarded) {
+        buttonText = "탑승 완료됨";
+        buttonColor = "#4CAF50"; // 초록색
+        buttonAction = () => Alert.alert("알림", "이미 탑승 처리가 완료되었습니다.");
+        disabled = false;
+      } else if (info.isReserved) {
+        buttonText = "탑승 완료 / 취소";
         buttonColor = "#ef5350"; 
-        buttonAction = () => handleCancel(item.time);
+        buttonAction = () => handleActionSheet(item.time); 
         disabled = false;
       } else {
-        // 예약 안 한 경우
         if (!isMain) {
-            // ✅ 가장 가까운 버스가 아니면 예약 불가
             buttonText = "순차 예약";
             buttonColor = "#ccc";
             disabled = true;
         } else if (isPenaltyActive) {
-            // ✅ 페널티 시간 중이면 예약 불가
             buttonText = `예약 제한 (${secondsLeft}초)`;
             buttonColor = "#999";
             disabled = true;
         } else {
-            // 예약 가능
-            buttonText = "승차 예약";
-            buttonColor = "#0062ffff"; 
+            buttonText = isFull ? "대기 예약 (만원)" : "승차 예약";
+            buttonColor = isFull ? "#FF9800" : "#0062ffff"; 
             buttonAction = () => handleReserve(item.time);
             disabled = false;
         }
@@ -305,8 +459,11 @@ const ShuttleScreen = () => {
       buttonText = `출발 ${minsLeft > 60 ? Math.floor(minsLeft/60)+'시간 ' : ''}${minsLeft%60}분 전`;
     }
 
-    // ✅ 인원 표시 로직: 예약했으면 숫자 보임, 안 했으면 비공개
-    const displayCountText = info.isReserved ? `${info.count}명` : '예약 후 확인';
+    const showCount = info.isReserved || info.isBoarded;
+
+    const displayCountText = showCount 
+        ? `${info.totalCount}명 / ${totalCapacity}명` 
+        : `예약 후 확인가능`;
 
     return (
       <View 
@@ -316,15 +473,26 @@ const ShuttleScreen = () => {
         <View style={styles.cardHeader}>
           <View>
             <Text style={[styles.timeText, isMain && styles.mainTimeText]}>{item.time}</Text>
-            {item.note && (
-              <Text style={[styles.noteText, isTest && { color: '#FF9800' }]}>
-                {item.note}
-              </Text>
-            )}
+            
+            <View style={{flexDirection:'row', gap: 5, marginTop: 4, flexWrap:'wrap'}}>
+                {busCount > 1 && (
+                    <View style={{backgroundColor: '#E8F5E9', paddingHorizontal:6, paddingVertical:2, borderRadius:4}}>
+                        <Text style={{color: '#2E7D32', fontSize: 11, fontWeight: 'bold'}}>
+                        🚌 버스 {busCount}대 ({totalCapacity}석)
+                        </Text>
+                    </View>
+                )}
+                {item.note && (
+                    <Text style={[styles.noteText, isTest && { color: '#000000', marginTop:0 }]}>
+                        {item.note}
+                    </Text>
+                )}
+            </View>
           </View>
+
           {isMain && !isTest && (
             <View style={styles.badgeContainer}>
-              <Text style={styles.badgeText}>가장 빠른 버스</Text>
+              <Text style={styles.badgeText}>이번버스</Text>
             </View>
           )}
           {isTest && (
@@ -336,11 +504,17 @@ const ShuttleScreen = () => {
 
         <View style={styles.cardBody}>
           <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>현재 대기 인원</Text>
-            <Text style={[styles.statusValue, !info.isReserved && { fontSize: 14, color: '#888' }]}>
-              {/* 오픈 전이면 '-', 오픈 됐으면 예약 여부에 따라 표시 */}
-              {isOpen ? displayCountText : '-'}
-            </Text>
+            <Text style={styles.statusLabel}>실시간 현황</Text>
+            <View style={{alignItems: 'flex-end'}}>
+                <Text style={[styles.statusValue, !showCount && { fontSize: 14, color: '#888' }]}>
+                {isOpen ? displayCountText : '-'}
+                </Text>
+                {isOpen && isFull && showCount && (
+                    <Text style={{fontSize: 11, color: '#FF5252', fontWeight:'bold'}}>
+                        정원 초과 (탑승 불가 가능성 높음)
+                    </Text>
+                )}
+            </View>
           </View>
 
           <TouchableOpacity
@@ -357,17 +531,19 @@ const ShuttleScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* ... 헤더 부분 동일 ... */}
+      {/* 헤더: 뒤로가기 버튼 삭제됨 */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={28} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>셔틀버스</Text>
-        <View style={{ width: 28 }} />
+        <Text style={[styles.headerTitle, { marginLeft: 10 }]}>셔틀버스</Text>
+        <View style={{ alignItems: 'flex-end' }}>
+             <Text style={{ fontSize: 10, color: '#666' }}>내 신뢰도</Text>
+             <Text style={{ fontSize: 14, fontWeight: 'bold', color: myTrustScore < 80 ? '#f44336' : '#0062ffff' }}>
+                {myTrustScore}점
+             </Text>
+        </View>
       </View>
 
       <View style={styles.contentContainer}>
-        {/* ... 탭 메뉴 부분 동일 ... */}
+        {/* 탭 헤더 */}
         <View style={styles.fixedHeader}>
           <View style={styles.tabContainer}>
             {(['도봉산역', '양주역', '의정부중앙역'] as RouteName[]).map((route) => (
@@ -407,14 +583,12 @@ const ShuttleScreen = () => {
           >
             {nearestBus ? (
               <>
-                <Text style={styles.sectionTitle}>Next Shuttle 🚌</Text>
-                {/* 가장 가까운 버스는 isMain = true */}
+                <Text style={styles.sectionTitle}>이번버스</Text>
                 {renderBusCard(nearestBus, true)}
                 
                 {nextBuses.length > 0 && (
                   <>
-                    <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Upcoming</Text>
-                    {/* 그 외 버스는 isMain = false */}
+                    <Text style={[styles.sectionTitle, { marginTop: 20 }]}>다음버스</Text>
                     {nextBuses.map(bus => renderBusCard(bus, false))}
                   </>
                 )}
@@ -426,7 +600,6 @@ const ShuttleScreen = () => {
                 <Text style={styles.emptySubText}>내일 첫 차를 이용해주세요.</Text>
               </View>
             )}
-            
             <View style={{ height: 40 }} />
           </ScrollView>
         )}
@@ -438,7 +611,6 @@ const ShuttleScreen = () => {
 export default ShuttleScreen;
 
 const styles = StyleSheet.create({
-  // ... 기존 스타일 동일 ...
   container: { flex: 1, backgroundColor: '#f8f9fa' },
   contentContainer: { flex: 1 },
   header: {
@@ -447,7 +619,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#eee',
     zIndex: 10,
   },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#1a1a1a' }, // 폰트 사이즈 키우고 bold 처리
   fixedHeader: { backgroundColor: '#f8f9fa', zIndex: 5 },
   tabContainer: { flexDirection: 'row', backgroundColor: '#fff' },
   tabButton: { flex: 1, paddingVertical: 14, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },

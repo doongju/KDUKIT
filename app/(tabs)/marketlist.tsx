@@ -24,7 +24,6 @@ import {
   Dimensions,
   FlatList,
   Image,
-  // Modal, // ✨ [삭제] 네이티브 Modal 제거
   Platform,
   RefreshControl,
   ScrollView,
@@ -423,14 +422,17 @@ export default function MarketListScreen() {
         <Text style={styles.fabText}>글쓰기</Text>
       </TouchableOpacity>
 
-      {/* ✨✨✨ [핵심 수정] 상세 모달을 일반 View(Absolute)로 변경 ✨✨✨ */}
-      {/* <Modal> 대신 조건부 렌더링을 사용합니다. */}
+      {/* ✨✨✨ [상세 모달 디자인 동기화] ✨✨✨ */}
       {modalVisible && (
         <View style={styles.fakeModalContainer}>
             <View style={styles.overlay}>
                <TouchableOpacity style={{flex:1}} onPress={() => setModalVisible(false)} />
                 <View style={styles.modalContainer}>
-                    <View style={styles.modalHandle} />
+                    {/* ✨ [수정] 핸들 바 디자인 통일 */}
+                    <View style={styles.modalHandleContainer}>
+                        <View style={styles.modalHandle} />
+                    </View>
+                    
                     <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.modalCloseBtn}>
                         <Ionicons name="close" size={28} color="#555" />
                     </TouchableOpacity>
@@ -498,7 +500,7 @@ export default function MarketListScreen() {
                         <Text style={styles.modalDescription}>{selectedPost?.description}</Text>
                     </ScrollView>
                     
-                    <View style={[styles.bottomBar, {paddingBottom: insets.bottom + 90}]}>
+                    <View style={[styles.bottomBar, {paddingBottom: insets.bottom + 75}]}>
                         <TouchableOpacity onPress={() => selectedPost && handleToggleWish(selectedPost.id)} style={styles.wishBtnBig}>
                              <Ionicons name={selectedPost && myWishlist.includes(selectedPost.id) ? "heart" : "heart-outline"} size={28} color={selectedPost && myWishlist.includes(selectedPost.id) ? "#ff4444" : "#888"} />
                         </TouchableOpacity>
@@ -531,7 +533,6 @@ export default function MarketListScreen() {
         </View>
       )}
 
-      {/* 이미지 뷰어 (이제 유일한 Modal이므로 충돌 없음) */}
       {postImages.length > 0 && (
           <ImageView
             images={postImages.map(uri => ({ uri }))}
@@ -622,14 +623,35 @@ const styles = StyleSheet.create({
   },
   fabText: { color: '#fff', fontWeight: 'bold', marginLeft: 6, fontSize: 16 },
   
-  // ✨ [추가] 모달 대신 사용하는 전체화면 오버레이 스타일
+  // ✨ [모달 스타일 수정]
   fakeModalContainer: {
     position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
-    zIndex: 100, // 다른 요소보다 위에 오도록 설정
+    zIndex: 100,
   },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContainer: { width: '100%', backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%', overflow: 'hidden' },
-  modalHandle: { width: 40, height: 5, backgroundColor: '#e0e0e0', borderRadius: 2, alignSelf: 'center', marginTop: 10 },
+  modalContainer: { 
+    width: '100%', 
+    backgroundColor: '#fff', 
+    borderTopLeftRadius: 24, 
+    borderTopRightRadius: 24, 
+    // ✨ [핵심] 높이 94%로 고정 (동아리 리스트와 동일)
+    height: '75%', 
+    overflow: 'hidden' 
+  },
+  
+  // ✨ [수정] 핸들 바 컨테이너
+  modalHandleContainer: { 
+      alignItems: 'center', 
+      paddingVertical: 12 
+  },
+  // ✨ [수정] 핸들 바 스타일 (동아리 리스트와 동일)
+  modalHandle: { 
+      width: 40, 
+      height: 4, 
+      borderRadius: 2, 
+      backgroundColor: '#e0e0e0' 
+  },
+
   modalCloseBtn: { position: 'absolute', top: 15, right: 15, zIndex: 10, padding: 5, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 20 },
   modalContent: { paddingBottom: 20 },
   imageSwiperContainer: { position: 'relative', marginBottom: 20, backgroundColor: '#000' },

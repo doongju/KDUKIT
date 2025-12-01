@@ -110,7 +110,7 @@ export default function CreateMarketScreen() {
     if (status !== 'granted') {
       Alert.alert(
         '권한 필요',
-        '사진을 업로드하려면 갤러리 접근 권한이 필요합니다.\n설정에서 권한을 허용해주세요.',
+        '설정에서 사진 라이브러리 접근 권한을 허용해주세요.',
         [
           { text: '취소', style: 'cancel' },
           { text: '설정으로 이동', onPress: () => Linking.openSettings() } // 설정창 이동
@@ -411,7 +411,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '600', color: '#888', marginBottom: 8 },
   divider: { height: 1, backgroundColor: '#f1f3f5', marginVertical: 15 },
 
-  input: { fontSize: 16, color: '#333', paddingVertical: 5 },
+  input: { fontSize: 16, color: '#333', paddingVertical: 6 },
   textArea: { minHeight: 150, lineHeight: 24 },
 
   pickerButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 },

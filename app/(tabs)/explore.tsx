@@ -162,7 +162,7 @@ const ExploreScreen: React.FC = () => {
 
         {/* 2. 동아리 */}
         <View style={[styles.sectionHeader, { marginTop: 25 }]}>
-          <Text style={styles.sectionTitle}>동아리 모집 👥</Text>
+          <Text style={styles.sectionTitle}>모집중인 동아리 👥</Text>
           <TouchableOpacity onPress={() => router.push('/(tabs)/clublist')}><Text style={styles.moreText}>더보기</Text></TouchableOpacity>
         </View>
         {recentClubs.length > 0 ? (

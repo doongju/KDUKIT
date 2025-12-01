@@ -6,12 +6,14 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react'; // ✨ useRef 추가
 import {
   ActivityIndicator,
   Alert,
-  BackHandler, // ✨ 추가: 뒤로가기 제어용
+  BackHandler,
   Image,
+  Keyboard, // ✨ Keyboard 추가
+  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
@@ -20,6 +22,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback, // ✨ TouchableWithoutFeedback 추가
   View
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,6 +31,7 @@ import { db, storage } from '../../firebaseConfig';
 
 const ACTIVITY_FIELDS = ['학술', '스포츠', '봉사', '창작', '예술', '기타'];
 const MEMBER_LIMIT_OPTIONS = [...Array.from({ length: 11 }, (_, i) => (i + 2).toString()), '기타 (직접 입력)'];
+const MAX_IMAGES = 10;
 
 export default function CreateClubScreen() {
   const insets = useSafeAreaInsets();
@@ -35,6 +39,9 @@ export default function CreateClubScreen() {
   const params = useLocalSearchParams(); 
   const auth = getAuth();
   const currentUser = auth.currentUser;
+
+  // ✨ ScrollView 제어를 위한 Ref 생성
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const [clubName, setClubName] = useState('');
   const [description, setDescription] = useState('');
@@ -44,19 +51,18 @@ export default function CreateClubScreen() {
   const [isCustomLimit, setIsCustomLimit] = useState(false); 
 
   const [creatingPost, setCreatingPost] = useState(false);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
 
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [modalType, setModalType] = useState<'activityField' | 'memberLimit' | null>(null);
 
-  // ✨ [추가] 뒤로가기 핸들러 (무조건 동아리 목록으로 이동)
+  // 뒤로가기 핸들러
   const handleBack = () => {
     router.replace('/(tabs)/clublist');
-    return true; // 안드로이드 하드웨어 백버튼 제어용
+    return true; 
   };
 
-  // ✨ [추가] 하드웨어 뒤로가기 버튼(안드로이드) 리스너 등록
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBack);
     return () => backHandler.remove();
@@ -65,7 +71,6 @@ export default function CreateClubScreen() {
   // 초기화 및 데이터 채우기
   useEffect(() => {
     if (params.postId) {
-      // 수정 모드
       setClubName(params.initialClubName as string || '');
       setDescription(params.initialDescription as string || '');
       setActivityField(params.initialActivityField as string || '학술');
@@ -81,13 +86,11 @@ export default function CreateClubScreen() {
       
       const initImg = params.initialImageUrl as string;
       if (initImg && initImg.startsWith('http')) {
-          setImageUrl(initImg);
+          setImageUrls([initImg]);
       } else {
-          setImageUrl(null);
+          setImageUrls([]);
       }
-
     } else {
-      // 새 글 모드
       resetForm();
     }
   }, [params.postId, params.t]);
@@ -98,55 +101,62 @@ export default function CreateClubScreen() {
     setActivityField('학술');
     setMemberLimit('2');
     setIsCustomLimit(false);
-    setImageUrl(null);
+    setImageUrls([]);
   };
 
   const pickImage = async () => {
     if (!currentUser) { Alert.alert("로그인 필요", "로그인이 필요합니다."); return; }
+    if (imageUrls.length >= MAX_IMAGES) {
+        Alert.alert("알림", `사진은 최대 ${MAX_IMAGES}장까지 첨부할 수 있습니다.`);
+        return;
+    }
 
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert(
         '권한 필요',
-        '사진을 업로드하려면 갤러리 접근 권한이 필요합니다.\n설정에서 권한을 허용해주세요.',
+        '설정에서 사진 라이브러리 접근 권한을 허용해주세요.',
         [
           { text: '취소', style: 'cancel' },
-          { text: '설정으로 이동', onPress: () => Linking.openSettings() } 
+          { text: '설정으로 이동', onPress: () => Linking.openSettings() } // 설정창 이동
         ]
-      );
+      );    
       return;
+      
     }
 
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true, aspect: [4, 3], quality: 0.7,
+      allowsEditing: false, 
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_IMAGES - imageUrls.length,
+      quality: 0.7,
     });
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      setImageUrl(result.assets[0].uri);
+      const newUris = result.assets.map(asset => asset.uri);
+      setImageUrls(prev => [...prev, ...newUris].slice(0, MAX_IMAGES));
     }
   };
 
-  const uploadImage = async (uri: string): Promise<string | null> => {
-    if (!currentUser) return null; 
-    
-    if (uri.startsWith('http') || uri.startsWith('https')) {
-        return uri;
-    }
+  const removeImage = (indexToRemove: number) => {
+    setImageUrls(prev => prev.filter((_, index) => index !== indexToRemove));
+  };
 
-    setUploadingImage(true);
+  const uploadSingleImage = async (uri: string): Promise<string | null> => {
+    if (!currentUser) return null; 
+    if (uri.startsWith('http') || uri.startsWith('https')) return uri;
+
     try {
       const response = await fetch(uri);
       const blob = await response.blob();
-      const filename = `club_images/${currentUser.uid}_${Date.now()}.jpg`; 
+      const filename = `club_images/${currentUser.uid}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`; 
       const storageRef = ref(storage, filename);
       await uploadBytes(storageRef, blob);
       return await getDownloadURL(storageRef);
     } catch (error) {
       console.error("Error uploading image:", error);
       return null;
-    } finally {
-      setUploadingImage(false);
     }
   };
 
@@ -170,71 +180,62 @@ export default function CreateClubScreen() {
 
   const handleSave = async () => {
     if (!currentUser) { Alert.alert("로그인 필요", "로그인이 필요합니다."); return; }
-    
     if (!clubName.trim() || !description.trim() || !activityField || !memberLimit) { 
-        return Alert.alert("필수 입력", "모든 필드를 채워주세요."); 
+        return Alert.alert("모든 입력 칸을 채워야 합니다."); 
     }
 
     const limitNumber = parseInt(memberLimit, 10);
     if (isNaN(limitNumber) || limitNumber < 2) {
-        return Alert.alert("인원 오류", "모집 인원은 2명 이상의 숫자여야 합니다.");
+        return Alert.alert("모집 인원은 2명 이상이어야 합니다.");
     }
 
     setCreatingPost(true);
-    
-    let finalImageUrl: string | null = imageUrl; 
-
-    if (imageUrl && !imageUrl.startsWith('http')) {
-      finalImageUrl = await uploadImage(imageUrl);
-      if (!finalImageUrl) { 
-          setCreatingPost(false); 
-          Alert.alert("오류", "이미지 업로드에 실패했습니다."); 
-          return; 
-      }
-    }
+    setUploadingImage(true);
 
     try {
+      const uploadPromises = imageUrls.map(uri => uploadSingleImage(uri));
+      const uploadedUrls = await Promise.all(uploadPromises);
+      const finalImageUrls = uploadedUrls.filter((url): url is string => url !== null);
+
+      if (imageUrls.length > 0 && finalImageUrls.length === 0) {
+           setCreatingPost(false);
+           setUploadingImage(false);
+           Alert.alert("오류", "이미지 업로드에 실패했습니다.");
+           return;
+      }
+
       const targetPostId = Array.isArray(params.postId) ? params.postId[0] : params.postId;
+      const postData = {
+          clubName: clubName.trim(),
+          description: description.trim(),
+          activityField,
+          memberLimit: limitNumber,
+          imageUrl: finalImageUrls[0] || null, 
+          imageUrls: finalImageUrls, 
+      };
 
       if (targetPostId) {
-        // 수정
-        const postRef = doc(db, 'clubPosts', targetPostId);
-        await updateDoc(postRef, {
-            clubName: clubName.trim(),
-            description: description.trim(),
-            activityField,
-            memberLimit: limitNumber,
-            imageUrl: finalImageUrl || null, 
-        });
+        await updateDoc(doc(db, 'clubPosts', targetPostId), postData);
         Alert.alert("수정 완료", "게시글이 수정되었습니다.");
       } else {
-        // 생성
         await addDoc(collection(db, 'clubPosts'), {
-            clubName: clubName.trim(),
-            description: description.trim(),
-            activityField,
-            memberLimit: limitNumber,
+            ...postData,
             currentMembers: [currentUser.uid],
             creatorId: currentUser.uid,
             createdAt: serverTimestamp(),
-            imageUrl: finalImageUrl,
         });
         Alert.alert("등록 완료", "모집글이 등록되었습니다.");
       }
-      
-      // ✨ [수정] 작성 완료 후에도 동아리 목록으로 이동
       router.replace('/(tabs)/clublist');
-
     } catch (error: any) {
-      console.error("Error saving club post:", error);
-      
-      if (error.code === 'permission-denied' || error.message.includes('permission-denied')) {
-        Alert.alert("이용 제한 🚫", "신고 누적(5회 이상)으로 인해 게시글 작성이 제한되었습니다.\n관리자에게 문의해주세요.");
+      if (error.code === 'permission-denied') {
+        Alert.alert("이용 제한", "신고 누적으로 인해 글 작성이 제한되었습니다.");
       } else {
         Alert.alert("실패", "저장 중 오류가 발생했습니다.");
       }
     } finally {
       setCreatingPost(false);
+      setUploadingImage(false);
     }
   };
 
@@ -243,7 +244,7 @@ export default function CreateClubScreen() {
     const currentVal = modalType === 'activityField' ? activityField : (isCustomLimit ? '기타 (직접 입력)' : memberLimit);
 
     return (
-        <ScrollView style={modalStyles.scrollView}>
+        <ScrollView style={modalStyles.scrollView} showsVerticalScrollIndicator={false}>
             {options.map((option, index) => (
                 <TouchableOpacity
                     key={index}
@@ -253,6 +254,7 @@ export default function CreateClubScreen() {
                     <Text style={[modalStyles.optionText, currentVal === option && modalStyles.selectedText]}>
                         {option}{modalType === 'memberLimit' && option !== '기타 (직접 입력)' ? '명' : ''}
                     </Text>
+                    {currentVal === option && <Ionicons name="checkmark" size={20} color="#0062ffff" />}
                 </TouchableOpacity>
             ))}
         </ScrollView>
@@ -260,109 +262,141 @@ export default function CreateClubScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { paddingTop: 0 }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}> 
-        {/* ✨ [수정] 뒤로가기 버튼 onPress에 handleBack 연결 */}
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: Platform.OS === 'android' ? 10 : 0 }]}>
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={28} color="#333" />
+          <Ionicons name="close" size={28} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{params.postId ? "모집글 수정" : "새 동아리 모집 글쓰기"}</Text>
-        <View style={styles.rightPlaceholder} />
+        <Text style={styles.headerTitle}>{params.postId ? "모집글 수정" : "새 모임 만들기"}</Text>
+        <TouchableOpacity onPress={handleSave} disabled={creatingPost || uploadingImage}>
+             {creatingPost ? <ActivityIndicator size="small" color="#0062ffff"/> : (
+                 <Text style={styles.saveButtonText}>완료</Text>
+             )}
+        </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.label}>동아리/학회 이름 <Text style={styles.required}>*</Text></Text>
-        <TextInput
-          style={styles.input}
-          placeholder="예: KDU 코딩 클럽"
-          value={clubName}
-          onChangeText={setClubName}
-          editable={!creatingPost}
-        />
+      {/* ✨ KeyboardAvoidingView + TouchableWithoutFeedback 구조 적용 */}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"} 
+        style={{flex: 1}}
+        keyboardVerticalOffset={0} 
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <ScrollView 
+              ref={scrollViewRef} // ✨ ref 연결
+              contentContainerStyle={styles.scrollContent} 
+              showsVerticalScrollIndicator={false}
+          >
+              
+              {/* 이미지 섹션 */}
+              <View style={styles.imageSection}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.imageList}>
+                      {imageUrls.length < MAX_IMAGES && (
+                          <TouchableOpacity 
+                              style={styles.addImageButton} 
+                              onPress={pickImage} 
+                              disabled={uploadingImage || creatingPost}
+                          >
+                              <Ionicons name="camera" size={24} color="#aaa" />
+                              <Text style={styles.addImageText}>{imageUrls.length}/{MAX_IMAGES}</Text>
+                          </TouchableOpacity>
+                      )}
+                      {imageUrls.map((uri, index) => (
+                          <View key={index} style={styles.imageWrapper}>
+                              <Image source={{ uri }} style={styles.selectedImage} />
+                              <TouchableOpacity 
+                                  style={styles.removeImageButton} 
+                                  onPress={() => removeImage(index)}
+                                  hitSlop={{top: 5, bottom: 5, left: 5, right: 5}}
+                              >
+                                  <Ionicons name="close-circle" size={22} color="#444" />
+                              </TouchableOpacity>
+                              {index === 0 && (
+                                  <View style={styles.thumbnailBadge}>
+                                      <Text style={styles.thumbnailText}>대표</Text>
+                                  </View>
+                              )}
+                          </View>
+                      ))}
+                  </ScrollView>
+              </View>
 
-        <Text style={styles.label}>상세 설명 <Text style={styles.required}>*</Text></Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          placeholder="활동 내용, 모임 시간 등을 자세히 적어주세요."
-          multiline
-          value={description}
-          onChangeText={setDescription}
-          editable={!creatingPost}
-        />
+              {/* 입력 폼 */}
+              <View style={styles.formContainer}>
+                  <View style={styles.inputGroup}>
+                      <Text style={styles.label}>모임 이름</Text>
+                      <TextInput
+                          style={styles.input}
+                          placeholder="예: 맛집 탐방 동아리"
+                          placeholderTextColor="#aaa"
+                          value={clubName}
+                          onChangeText={setClubName}
+                          maxLength={30}
+                      />
+                  </View>
 
-        <Text style={styles.label}>활동 분야 <Text style={styles.required}>*</Text></Text>
-        <TouchableOpacity 
-          style={styles.pickerDisplay} 
-          onPress={() => openModal('activityField')}
-          disabled={creatingPost}
-        >
-          <Text style={styles.pickerDisplayText}>{activityField}</Text>
-          <Ionicons name="chevron-down" size={20} color="#333" />
-        </TouchableOpacity>
+                  <View style={styles.rowContainer}>
+                      <View style={[styles.inputGroup, {flex: 1, marginRight: 10}]}>
+                          <Text style={styles.label}>활동 분야</Text>
+                          <TouchableOpacity 
+                              style={styles.selectButton} 
+                              onPress={() => openModal('activityField')}
+                          >
+                              <Text style={styles.selectButtonText}>{activityField}</Text>
+                              <Ionicons name="chevron-down" size={16} color="#666" />
+                          </TouchableOpacity>
+                      </View>
 
-        <Text style={styles.label}>모집 인원 <Text style={styles.required}>*</Text></Text>
-        <TouchableOpacity 
-          style={styles.pickerDisplay} 
-          onPress={() => openModal('memberLimit')}
-          disabled={creatingPost}
-        >
-          <Text style={styles.pickerDisplayText}>
-             {isCustomLimit ? '직접 입력' : `${memberLimit}명`}
-          </Text>
-          <Ionicons name="chevron-down" size={20} color="#333" />
-        </TouchableOpacity>
+                      <View style={[styles.inputGroup, {flex: 1}]}>
+                          <Text style={styles.label}>모집 정원</Text>
+                          <TouchableOpacity 
+                              style={styles.selectButton} 
+                              onPress={() => openModal('memberLimit')}
+                          >
+                              <Text style={styles.selectButtonText}>
+                                  {isCustomLimit ? '직접 입력' : `${memberLimit}명`}
+                              </Text>
+                              <Ionicons name="chevron-down" size={16} color="#666" />
+                          </TouchableOpacity>
+                      </View>
+                  </View>
 
-        {isCustomLimit && (
-            <View style={styles.customInputContainer}>
-                <TextInput
-                    style={styles.customInput}
-                    placeholder="숫자만 입력 (예: 20)"
-                    value={memberLimit}
-                    onChangeText={(text) => setMemberLimit(text.replace(/[^0-9]/g, ''))}
-                    keyboardType="number-pad"
-                    editable={!creatingPost}
-                />
-                <Text style={styles.customInputSuffix}>명</Text>
-            </View>
-        )}
+                  {isCustomLimit && (
+                      <View style={[styles.inputGroup, { marginTop: -10 }]}>
+                          <TextInput
+                              style={styles.input}
+                              placeholder="모집 인원 (숫자만 입력)"
+                              placeholderTextColor="#aaa"
+                              value={memberLimit}
+                              onChangeText={(text) => setMemberLimit(text.replace(/[^0-9]/g, ''))}
+                              keyboardType="number-pad"
+                          />
+                      </View>
+                  )}
 
-        <Text style={styles.label}>대표 이미지 (선택)</Text>
-        <TouchableOpacity 
-          style={[styles.imagePicker, (uploadingImage || creatingPost) && { opacity: 0.6 }]} 
-          onPress={pickImage} 
-          disabled={uploadingImage || creatingPost}
-        >
-          {uploadingImage ? (
-            <ActivityIndicator size="small" color="#0062ffff" />
-          ) : imageUrl ? (
-            <Image source={{ uri: imageUrl }} style={styles.previewImage} />
-          ) : (
-            <>
-              <Ionicons name="image-outline" size={40} color="#999" />
-              <Text style={styles.imagePickerText}>이미지를 선택하거나 클릭하여 변경</Text>
-            </>
-          )}
-        </TouchableOpacity>
-        
-        {/* 이미지 삭제 버튼 */}
-        {imageUrl && !uploadingImage && (
-          <TouchableOpacity onPress={() => setImageUrl(null)} style={styles.removeImageButton}>
-            <Text style={styles.removeImageButtonText}>이미지 삭제</Text>
-          </TouchableOpacity>
-        )}
+                  <View style={styles.inputGroup}>
+                      <Text style={styles.label}>소개글</Text>
+                      <TextInput
+                          style={[styles.input, styles.textArea]}
+                          placeholder="어떤 활동을 하는지, 어떤 분을 찾는지 자세히 적어주세요."
+                          placeholderTextColor="#aaa"
+                          multiline
+                          textAlignVertical="top"
+                          value={description}
+                          onChangeText={setDescription}
+                          // ✨ 핵심: 내용 사이즈(줄바꿈)가 바뀌면 스크롤을 맨 아래로 내림
+                          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+                      />
+                  </View>
+              </View>
+              
+              {/* ✨ 키보드가 올라왔을 때를 대비한 넉넉한 하단 여백 */}
+              <View style={{ height: 120 }} />
 
-        <TouchableOpacity 
-          style={[styles.submitButton, (uploadingImage || creatingPost) && styles.submitButtonDisabled]} 
-          onPress={handleSave}
-          disabled={uploadingImage || creatingPost}
-        >
-          {(uploadingImage || creatingPost) ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.submitButtonText}>{params.postId ? "수정 완료" : "모집 글 작성"}</Text>
-          )}
-        </TouchableOpacity>
-      </ScrollView>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
 
       <Modal
         animationType="slide"
@@ -371,17 +405,18 @@ export default function CreateClubScreen() {
         onRequestClose={closeModal}
       >
         <View style={modalStyles.overlay}>
-          <View style={modalStyles.modalContainer}>
-            <View style={modalStyles.modalHeader}>
-              <Text style={modalStyles.modalTitle}>
-                {modalType === 'activityField' ? '활동 분야 선택' : '모집 인원 선택'}
-              </Text>
-              <TouchableOpacity onPress={closeModal} style={modalStyles.closeButton}>
-                <Ionicons name="close" size={28} color="#999" />
-              </TouchableOpacity>
+            <TouchableOpacity style={modalStyles.backdrop} onPress={closeModal} />
+            <View style={modalStyles.modalContainer}>
+                <View style={modalStyles.handleContainer}>
+                    <View style={modalStyles.handleBar} />
+                </View>
+                <View style={modalStyles.modalHeader}>
+                    <Text style={modalStyles.modalTitle}>
+                        {modalType === 'activityField' ? '활동 분야' : '모집 인원'}
+                    </Text>
+                </View>
+                {renderModalContent()} 
             </View>
-            {renderModalContent()} 
-          </View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -389,80 +424,77 @@ export default function CreateClubScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f2f5' },
+  container: { flex: 1, backgroundColor: '#fff' },
+  
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 15, paddingBottom: 10, backgroundColor: '#fff',
-    borderBottomWidth: 1, borderBottomColor: '#eee',
+    paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#fff',
+    borderBottomWidth: 1, borderBottomColor: '#f1f3f5',
+    zIndex: 10, 
   },
-  backButton: { padding: 5 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
-  rightPlaceholder: { width: 38 }, 
-  scrollContent: { padding: 20, paddingBottom: 50 },
-  label: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 8, marginTop: 15 },
-  required: { color: 'red' },
-  input: {
-    backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12,
-    fontSize: 16, borderWidth: 1, borderColor: '#ddd', marginBottom: 10,
-  },
-  textArea: { minHeight: 100, textAlignVertical: 'top' },
-  pickerDisplay: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12,
-    borderWidth: 1, borderColor: '#ddd', marginBottom: 10,
-  },
-  pickerDisplayText: { fontSize: 16, color: '#333' },
-  
-  customInputContainer: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
-    borderRadius: 8, borderWidth: 1, borderColor: '#0062ffff', marginBottom: 10,
-  },
-  customInput: {
-    flex: 1, paddingHorizontal: 15, paddingVertical: 12, fontSize: 16,
-  },
-  customInputSuffix: {
-    paddingRight: 15, fontSize: 16, fontWeight: 'bold', color: '#333',
-  },
+  backButton: { padding: 4 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#1a1a1a' },
+  saveButtonText: { fontSize: 16, fontWeight: '700', color: '#0062ffff' },
 
-  imagePicker: {
-    backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#ddd',
-    height: 150, alignItems: 'center', justifyContent: 'center', marginTop: 10, overflow: 'hidden',
+  scrollContent: { padding: 20 },
+
+  imageSection: { marginBottom: 20 },
+  imageList: { alignItems: 'center', paddingVertical: 5 },
+   addImageButton: { 
+    width: 80, height: 80, 
+    borderRadius: 8, borderWidth: 1, borderColor: '#ddd', 
+    justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' 
   },
-  imagePickerText: { fontSize: 14, color: '#999', marginTop: 10 },
-  previewImage: { width: '100%', height: '100%', borderRadius: 8, resizeMode: 'cover' },
+  addImageText: { fontSize: 12, color: '#888', marginTop: 4, fontWeight: '600' },
+  
+  imageWrapper: { position: 'relative', marginRight: 10 },
+  selectedImage: { width: 80, height: 80, borderRadius: 12, backgroundColor: '#eee' },
   removeImageButton: {
-    backgroundColor: '#dc3545', paddingVertical: 8, paddingHorizontal: 15, borderRadius: 8,
-    alignSelf: 'flex-start', marginTop: 10,
+    position: 'absolute', top: -8, right: -8,
+    backgroundColor: '#fff', borderRadius: 12, zIndex: 5,
   },
-  removeImageButtonText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
-  submitButton: {
-    backgroundColor: '#0062ffff', borderRadius: 10, paddingVertical: 15, alignItems: 'center',
-    justifyContent: 'center', marginTop: 30, shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2, shadowRadius: 3, elevation: 5,
+  thumbnailBadge: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)', paddingVertical: 2,
+    borderBottomLeftRadius: 12, borderBottomRightRadius: 12,
+    alignItems: 'center'
   },
-  submitButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  submitButtonDisabled: { backgroundColor: '#cccccc' },
+  thumbnailText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+
+  formContainer: { gap: 24 },
+  inputGroup: { gap: 8 },
+  rowContainer: { flexDirection: 'row', justifyContent: 'space-between' },
+  
+  label: { fontSize: 14, fontWeight: '600', color: '#495057', marginLeft: 4 },
+  input: {
+    backgroundColor: '#f1f3f5', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
+    fontSize: 16, color: '#333',
+  },
+  selectButton: {
+    backgroundColor: '#f1f3f5', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'
+  },
+  selectButtonText: { fontSize: 16, color: '#333' },
+  textArea: { minHeight: 150, lineHeight: 24 },
 });
 
 const modalStyles = StyleSheet.create({
-  overlay: {
-    flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'flex-end', alignItems: 'center',
-  },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  backdrop: { ...StyleSheet.absoluteFillObject },
   modalContainer: {
-    width: '100%', maxHeight: '60%', backgroundColor: '#fff',
-    borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: Platform.OS === 'ios' ? 30 : 10,
+    backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    maxHeight: '60%', paddingBottom: Platform.OS === 'ios' ? 40 : 20,
   },
-  modalHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: 15, borderBottomWidth: 1, borderBottomColor: '#eee',
-  },
+  handleContainer: { alignItems: 'center', paddingVertical: 12 },
+  handleBar: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#e0e0e0' },
+  modalHeader: { alignItems: 'center', marginBottom: 10 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  closeButton: { padding: 5 },
-  scrollView: { paddingHorizontal: 20, maxHeight: 300 },
+  scrollView: { paddingHorizontal: 20 },
   optionItem: {
-    paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f1f3f5',
   },
-  optionText: { fontSize: 17, color: '#333' },
-  selectedOption: { backgroundColor: '#e8f0fe', borderRadius: 8 },
+  optionText: { fontSize: 16, color: '#333' },
+  selectedOption: { backgroundColor: '#f8f9fa' },
   selectedText: { color: '#0062ffff', fontWeight: 'bold' },
 });
