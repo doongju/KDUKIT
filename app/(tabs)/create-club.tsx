@@ -309,7 +309,7 @@ export default function CreateClubScreen() {
                                   onPress={() => removeImage(index)}
                                   hitSlop={{top: 5, bottom: 5, left: 5, right: 5}}
                               >
-                                  <Ionicons name="close-circle" size={22} color="#444" />
+                                  <Ionicons name="close" size={14} color="#fff" />
                               </TouchableOpacity>
                               {index === 0 && (
                                   <View style={styles.thumbnailBadge}>
@@ -438,7 +438,7 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 20 },
 
   imageSection: { marginBottom: 20 },
-  imageList: { alignItems: 'center', paddingVertical: 5 },
+  imageList: { alignItems: 'center', paddingVertical: 5, gap: 10, paddingRight: 10 },
    addImageButton: { 
     width: 80, height: 80, 
     borderRadius: 8, borderWidth: 1, borderColor: '#ddd', 
@@ -449,8 +449,16 @@ const styles = StyleSheet.create({
   imageWrapper: { position: 'relative', marginRight: 10 },
   selectedImage: { width: 80, height: 80, borderRadius: 12, backgroundColor: '#eee' },
   removeImageButton: {
-    position: 'absolute', top: -8, right: -8,
-    backgroundColor: '#fff', borderRadius: 12, zIndex: 5,
+      position: 'absolute', 
+      top: 4, 
+      right: 4,
+      width: 20, // 크기 고정
+      height: 20, 
+      borderRadius: 10, // 완벽한 원형
+      backgroundColor: 'rgba(0,0,0,0.6)', // 반투명 검은색 배경
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      zIndex: 1
   },
   thumbnailBadge: {
     position: 'absolute', bottom: 0, left: 0, right: 0,

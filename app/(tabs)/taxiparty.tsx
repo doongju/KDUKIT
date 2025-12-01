@@ -271,7 +271,7 @@ export default function TaxiPartyScreen() {
   return (
     <View style={[styles.container]}>
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <Text style={styles.headerTitle}>택시파티 🚖</Text>
+        <Text style={styles.headerTitle}>택시파티</Text>
       </View>
       
       {loading ? <ActivityIndicator size="large" color="#0062ffff" style={{marginTop: 50}} /> : (
@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
     zIndex: 10
   },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#333' },
+  headerTitle: { fontSize: 24, fontWeight: '800', color: '#1a1a1a' },
   
   listContentContainer: { padding: 16, paddingBottom: 100 },
   

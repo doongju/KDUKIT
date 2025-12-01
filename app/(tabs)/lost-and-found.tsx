@@ -9,7 +9,7 @@ import {
     BackHandler,
     FlatList,
     Image,
-    Modal, // ✨ 모달 추가
+    Modal,
     Platform,
     RefreshControl,
     ScrollView,
@@ -33,59 +33,63 @@ interface LostItem {
   imageUrls?: string[]; 
 }
 
+// ✨ 리스트 아이템 컴포넌트
 const ItemCard = memo(({ item, onPress }: { item: LostItem, onPress: (id: string) => void }) => {
-    const images = item.imageUrls && item.imageUrls.length > 0 
-        ? item.imageUrls 
-        : (item.imageUrl ? [item.imageUrl] : []);
+    // 이미지 처리 로직 (배열이 있으면 첫 번째꺼, 없으면 단일, 그도 없으면 null)
+    const thumbnail = item.imageUrls && item.imageUrls.length > 0 
+        ? item.imageUrls[0] 
+        : (item.imageUrl ? item.imageUrl : null);
+    
+    const moreImagesCount = item.imageUrls ? item.imageUrls.length - 1 : 0;
+
+    // 날짜 포맷팅
+    const dateString = item.createdAt?.toDate 
+        ? item.createdAt.toDate().toLocaleDateString() 
+        : '';
 
     return (
       <TouchableOpacity 
-          style={styles.itemCard}
+          style={styles.card}
           onPress={() => onPress(item.id)}
           activeOpacity={0.9} 
       >
-          <View style={styles.topContainer}>
-            {images.length > 0 ? (
-                <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false} 
-                    style={styles.imageScroll}
-                    contentContainerStyle={styles.imageScrollContent}
-                >
-                    {images.map((url, index) => (
-                        <Image 
-                            key={index} 
-                            source={{ uri: url }} 
-                            style={styles.thumbnailImage} 
-                        />
-                    ))}
-                </ScrollView>
+          <View style={styles.imageContainer}>
+            {thumbnail ? (
+                <>
+                    <Image source={{ uri: thumbnail }} style={styles.cardImage} />
+                    {moreImagesCount > 0 && (
+                        <View style={styles.multipleImageIcon}>
+                             <Ionicons name="layers" size={12} color="#fff" />
+                        </View>
+                    )}
+                </>
             ) : (
-                <View style={[styles.iconBox, item.type === 'lost' ? styles.lostIcon : styles.foundIcon]}>
+                <View style={[styles.noImageContainer, item.type === 'lost' ? styles.bgLostLight : styles.bgFoundLight]}>
                     <Ionicons 
-                        name={item.type === 'lost' ? "search" : "gift"} 
-                        size={24} 
-                        color="#fff" 
+                        name={item.type === 'lost' ? "search" : "gift-outline"} 
+                        size={32} 
+                        color={item.type === 'lost' ? "#ff6b6b" : "#4d96ff"} 
                     />
                 </View>
             )}
           </View>
 
-          <View style={styles.itemInfo}>
-              <View style={styles.itemHeader}>
-                  <Text style={[styles.typeTag, { color: item.type === 'lost' ? '#ff6b6b' : '#4d96ff' }]}>
-                      {item.type === 'lost' ? '분실' : '습득'}
-                  </Text>
-                  <Text style={styles.dateText}>
-                      {item.createdAt?.toDate ? item.createdAt.toDate().toLocaleDateString() : ''}
-                  </Text>
+          <View style={styles.textContainer}>
+              <View style={styles.headerRow}>
+                  <View style={[styles.badge, item.type === 'lost' ? styles.badgeLost : styles.badgeFound]}>
+                      <Text style={[styles.badgeText, item.type === 'lost' ? styles.textLost : styles.textFound]}>
+                          {item.type === 'lost' ? '분실' : '습득'}
+                      </Text>
+                  </View>
+                  <Text style={styles.dateText}>{dateString}</Text>
               </View>
-              <Text style={styles.itemName} numberOfLines={1}>{item.itemName}</Text>
-              <Text style={styles.locationText} numberOfLines={1}>{item.location}</Text>
-          </View>
-          
-          <View style={styles.arrowContainer}>
-             <Ionicons name="chevron-forward" size={20} color="#ccc" />
+
+              <Text style={styles.title} numberOfLines={1}>{item.itemName}</Text>
+              
+              <View style={styles.locationRow}>
+                  <Ionicons name="location-sharp" size={14} color="#888" style={{marginRight: 2}} />
+                  <Text style={styles.locationText} numberOfLines={1}>{item.location}</Text>
+              </View>
           </View>
       </TouchableOpacity>
     );
@@ -103,7 +107,6 @@ export default function LostAndFoundScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // ✨ 글쓰기 모달 상태
   const [writeModalVisible, setWriteModalVisible] = useState(false);
 
   useEffect(() => {
@@ -155,7 +158,6 @@ export default function LostAndFoundScreen() {
       router.push(`/lost-item/${id}`);
   }, [router]);
 
-  // ✨ 글쓰기 페이지 이동 핸들러
   const handleNavigateToWrite = (type: 'lost' | 'found') => {
       setWriteModalVisible(false);
       router.push(`/(tabs)/create-lost-item?type=${type}`);
@@ -168,12 +170,12 @@ export default function LostAndFoundScreen() {
   return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
           
-          {/* 헤더 */}
-          <View style={styles.headerBar}>
+          {/* 1. Header */}
+          <View style={styles.headerContainer}>
               {isSearching ? (
-                  <View style={styles.searchBarContainer}>
-                      <TouchableOpacity onPress={() => { setIsSearching(false); setSearchQuery(''); }}>
-                          <Ionicons name="arrow-back" size={24} color="#333" />
+                  <View style={styles.searchBarWrapper}>
+                      <TouchableOpacity onPress={() => { setIsSearching(false); setSearchQuery(''); }} style={{padding: 5}}>
+                          <Ionicons name="arrow-back" size={24} color="#555" />
                       </TouchableOpacity>
                       <TextInput 
                           style={styles.searchInput}
@@ -182,88 +184,84 @@ export default function LostAndFoundScreen() {
                           value={searchQuery}
                           onChangeText={setSearchQuery}
                           autoFocus
-                          returnKeyType="search"
                       />
                       {searchQuery.length > 0 && (
-                          <TouchableOpacity onPress={() => setSearchQuery('')}>
+                          <TouchableOpacity onPress={() => setSearchQuery('')} style={{padding: 5}}>
                               <Ionicons name="close-circle" size={20} color="#ccc" />
                           </TouchableOpacity>
                       )}
                   </View>
               ) : (
-                  <View style={styles.defaultHeaderContainer}>
-                      <Text style={styles.headerTitle}>분실물 센터</Text>
+                  <View style={styles.headerContent}>
+                      <Text style={styles.headerTitle}>분실물 센터 🔎</Text>
                       <TouchableOpacity 
                           onPress={() => setIsSearching(true)} 
-                          style={styles.searchIconBtn}
+                          style={styles.iconButton}
                       >
-                          <Ionicons name="search-outline" size={26} color="#333" />
+                          <Ionicons name="search" size={24} color="#333" />
                       </TouchableOpacity>
                   </View>
               )}
           </View>
 
-          {/* 필터 (기존 등록 버튼 제거) */}
-          <View style={styles.controlContainer}>
-              <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.scrollContentContainer}
-              >
-                  {['all', 'lost', 'found'].map((f) => (
-                      <TouchableOpacity
-                          key={f}
-                          style={[styles.filterButton, filter === f && styles.filterButtonActive]}
-                          onPress={() => setFilter(f as any)}
-                      >
-                          <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-                              {f === 'all' ? '전체' : f === 'lost' ? '분실물' : '습득물'}
-                          </Text>
-                      </TouchableOpacity>
-                  ))}
-              </ScrollView>
-          </View>
+          {/* 2. Filter Tabs */}
+          {!isSearching && (
+            <View style={styles.filterContainer}>
+                <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.filterScroll}
+                >
+                    {['all', 'lost', 'found'].map((f) => (
+                        <TouchableOpacity
+                            key={f}
+                            style={[styles.filterButton, filter === f && styles.filterButtonActive]}
+                            onPress={() => setFilter(f as any)}
+                        >
+                            <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
+                                {f === 'all' ? '전체' : f === 'lost' ? '분실물' : '습득물'}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+            </View>
+          )}
 
-          {/* 리스트 */}
+          {/* 3. List */}
           {loading ? (
-              <ActivityIndicator size="large" color="#0062ffff" style={{ marginTop: 20 }} />
+              <ActivityIndicator size="large" color="#0062ffff" style={{ marginTop: 40 }} />
           ) : (
               <FlatList
                   data={filteredItems}
                   renderItem={renderItem}
                   keyExtractor={item => item.id}
                   contentContainerStyle={styles.listContent}
-                  refreshControl={
-                      <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-                  }
+                  refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                   ListEmptyComponent={
                       <View style={styles.emptyContainer}>
-                          {searchQuery ? (
-                              <>
-                                  <Ionicons name="search-outline" size={50} color="#ddd" />
-                                  <Text style={styles.emptyText}>검색 결과가 없습니다.</Text>
-                              </>
-                          ) : (
-                              <Text style={styles.emptyText}>등록된 물건이 없습니다.</Text>
-                          )}
+                          <Ionicons name={searchQuery ? "search-outline" : "file-tray-outline"} size={60} color="#ddd" />
+                          <Text style={styles.emptyText}>
+                              {searchQuery ? "검색 결과가 없습니다." : "등록된 분실물이 없습니다."}
+                          </Text>
                       </View>
                   }
                   initialNumToRender={8}
-                  maxToRenderPerBatch={5}
-                  windowSize={5}
+                  maxToRenderPerBatch={8}
               />
           )}
 
-          {/* ✨ [추가] 글쓰기 FAB 버튼 */}
-          <TouchableOpacity 
-            style={styles.fab} 
-            onPress={() => setWriteModalVisible(true)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="add" size={30} color="#fff" />
-          </TouchableOpacity>
+          {/* 4. FAB */}
+          {!writeModalVisible && (
+            <TouchableOpacity 
+              style={styles.fab} 
+              onPress={() => setWriteModalVisible(true)}
+              activeOpacity={0.9}
+            >
+              <Ionicons name="add" size={28} color="#fff" />
+            </TouchableOpacity>
+          )}
 
-          {/* ✨ [추가] 글쓰기 유형 선택 모달 */}
+          {/* 5. Write Type Selection Modal */}
           <Modal
             animationType="fade"
             transparent={true}
@@ -279,26 +277,38 @@ export default function LostAndFoundScreen() {
                     <Text style={styles.modalTitle}>어떤 글을 작성하시나요?</Text>
                     
                     <TouchableOpacity 
-                        style={[styles.modalButton, { backgroundColor: '#ff6b6b' }]} 
+                        style={[styles.modalButton, styles.modalButtonLost]} 
                         onPress={() => handleNavigateToWrite('lost')}
+                        activeOpacity={0.8}
                     >
-                        <Ionicons name="search" size={20} color="#fff" style={{ marginRight: 8 }} />
-                        <Text style={styles.modalButtonText}>물건을 잃어버렸어요 (분실)</Text>
+                        <View style={styles.modalIconBox}>
+                            <Ionicons name="search" size={24} color="#ff6b6b" />
+                        </View>
+                        <View>
+                            <Text style={styles.modalButtonTitle}>물건을 잃어버렸어요</Text>
+                            <Text style={styles.modalButtonDesc}>분실물 등록하기</Text>
+                        </View>
                     </TouchableOpacity>
 
                     <TouchableOpacity 
-                        style={[styles.modalButton, { backgroundColor: '#4d96ff', marginTop: 10 }]} 
+                        style={[styles.modalButton, styles.modalButtonFound]} 
                         onPress={() => handleNavigateToWrite('found')}
+                        activeOpacity={0.8}
                     >
-                        <Ionicons name="gift" size={20} color="#fff" style={{ marginRight: 8 }} />
-                        <Text style={styles.modalButtonText}>물건을 주웠어요 (습득)</Text>
+                        <View style={styles.modalIconBox}>
+                            <Ionicons name="gift" size={24} color="#4d96ff" />
+                        </View>
+                        <View>
+                            <Text style={styles.modalButtonTitle}>물건을 주웠어요</Text>
+                            <Text style={styles.modalButtonDesc}>습득물 등록하기</Text>
+                        </View>
                     </TouchableOpacity>
 
                     <TouchableOpacity 
                         style={styles.modalCancelButton} 
                         onPress={() => setWriteModalVisible(false)}
                     >
-                        <Text style={styles.modalCancelText}>취소</Text>
+                        <Text style={styles.modalCancelText}>닫기</Text>
                     </TouchableOpacity>
                 </View>
             </TouchableOpacity>
@@ -309,118 +319,137 @@ export default function LostAndFoundScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  headerBar: {
-      height: 60, justifyContent: 'center', paddingHorizontal: 20,
-      borderBottomWidth: 1, borderBottomColor: '#f0f0f0', backgroundColor: '#fff',
+  container: { flex: 1, backgroundColor: '#f8f9fa' }, // 전체 배경색 통일
+
+  /* Header */
+  headerContainer: { 
+    backgroundColor: '#fff', 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#f1f3f5',
+    paddingVertical: 10,
   },
-  defaultHeaderContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#333' },
-  searchIconBtn: { padding: 5 },
-  searchBarContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f2f3f7', borderRadius: 10, paddingHorizontal: 10, height: 40 },
-  searchInput: { flex: 1, fontSize: 16, color: '#333', marginLeft: 10, paddingVertical: 0 },
-  controlContainer: { backgroundColor: '#fff', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  scrollContentContainer: { paddingHorizontal: 20, alignItems: 'center', gap: 8 },
-  filterButton: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#f0f0f0', borderWidth: 1, borderColor: '#eee' },
+  headerContent: {
+    height: 50,
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+  },
+  headerTitle: { fontSize: 24, fontWeight: '800', color: '#1a1a1a' },
+  iconButton: { padding: 8, borderRadius: 20, backgroundColor: '#f8f9fa' },
+  
+  /* Search Bar */
+  searchBarWrapper: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#f1f3f5', 
+    borderRadius: 12, 
+    marginHorizontal: 15,
+    paddingHorizontal: 10, 
+    height: 46 
+  },
+  searchInput: { flex: 1, fontSize: 16, color: '#333', marginLeft: 8 },
+
+  /* Filter */
+  filterContainer: { backgroundColor: '#fff', paddingVertical: 12 },
+  filterScroll: { paddingHorizontal: 20 },
+  filterButton: { 
+    paddingHorizontal: 16, 
+    paddingVertical: 8, 
+    borderRadius: 20, 
+    backgroundColor: '#f8f9fa', 
+    marginRight: 8, 
+    borderWidth: 1, 
+    borderColor: '#eee' 
+  },
   filterButtonActive: { backgroundColor: '#333', borderColor: '#333' },
   filterText: { color: '#666', fontWeight: '600', fontSize: 14 },
   filterTextActive: { color: '#fff' },
   
-  listContent: { padding: 20, paddingBottom: 100, backgroundColor: '#f5f5f5' },
-  itemCard: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      backgroundColor: '#fff', 
-      borderRadius: 12, 
-      padding: 12, 
-      marginBottom: 12, 
-      elevation: 2, 
-      shadowColor: '#000', 
-      shadowOpacity: 0.1, 
-      shadowOffset: { width: 0, height: 1 } 
+  /* List Layout */
+  listContent: { padding: 20, paddingBottom: 100 },
+  
+  /* Card Design */
+  card: { 
+    flexDirection: 'row', 
+    backgroundColor: '#fff', 
+    borderRadius: 16, 
+    marginBottom: 16, 
+    padding: 12, 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 2 }, 
+    shadowOpacity: 0.05, 
+    shadowRadius: 8, 
+    elevation: 2 
   },
+  imageContainer: { marginRight: 15, position: 'relative' },
+  cardImage: { width: 90, height: 90, borderRadius: 12, backgroundColor: '#eee', resizeMode: 'cover' },
   
-  topContainer: { marginRight: 15 },
-  iconBox: { width: 60, height: 60, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  lostIcon: { backgroundColor: '#ff6b6b' },
-  foundIcon: { backgroundColor: '#4d96ff' },
+  noImageContainer: { 
+    width: 90, height: 90, borderRadius: 12, 
+    justifyContent: 'center', alignItems: 'center' 
+  },
+  bgLostLight: { backgroundColor: '#ffebee' },
+  bgFoundLight: { backgroundColor: '#e3f2fd' },
   
-  imageScroll: { width: 70, height: 70 }, 
-  imageScrollContent: { alignItems: 'center' },
-  thumbnailImage: { width: 65, height: 65, borderRadius: 12, marginRight: 8, backgroundColor: '#eee', resizeMode: 'cover' },
+  multipleImageIcon: {
+      position: 'absolute', top: 6, right: 6, 
+      backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 6, 
+      padding: 4
+  },
 
-  itemInfo: { flex: 1, justifyContent: 'center' },
-  itemHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  typeTag: { fontSize: 12, fontWeight: 'bold' },
+  textContainer: { flex: 1, justifyContent: 'space-between', paddingVertical: 4 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  
+  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  badgeLost: { backgroundColor: '#ffebee' },
+  badgeFound: { backgroundColor: '#e3f2fd' },
+  badgeText: { fontSize: 11, fontWeight: 'bold' },
+  textLost: { color: '#ff6b6b' },
+  textFound: { color: '#4d96ff' },
+  
   dateText: { fontSize: 12, color: '#999' },
-  itemName: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 2 },
-  locationText: { fontSize: 14, color: '#666' },
-  
-  arrowContainer: { justifyContent: 'center', paddingLeft: 5 },
+  title: { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 4 },
+  locationRow: { flexDirection: 'row', alignItems: 'center' },
+  locationText: { fontSize: 13, color: '#666', flex: 1 },
 
-  emptyContainer: { alignItems: 'center', marginTop: 50 },
+  emptyContainer: { alignItems: 'center', marginTop: 80 },
   emptyText: { color: '#999', fontSize: 16, marginTop: 10 },
 
-  // ✨ FAB 스타일
+  /* FAB */
   fab: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 100 : 30,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    position: 'absolute', bottom: Platform.OS === 'ios' ? 90 : 30, right: 20,
+    width: 56, height: 56, borderRadius: 28,
     backgroundColor: '#0062ffff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
-    zIndex: 999,
+    justifyContent: 'center', alignItems: 'center',
+    elevation: 5, shadowColor: '#0062ffff', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8,
   },
 
-  // ✨ 모달 스타일
+  /* Modal */
   modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center',
   },
   modalContent: {
-    width: '80%',
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 25,
-    alignItems: 'center',
-    elevation: 5,
+    width: '85%', backgroundColor: '#fff', borderRadius: 24, padding: 24,
+    alignItems: 'center', elevation: 10, shadowColor: '#000', shadowOffset: {width:0, height:4}, shadowOpacity:0.2, shadowRadius:12
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    color: '#333',
-  },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#333', marginBottom: 20 },
+  
   modalButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    paddingVertical: 15,
-    borderRadius: 12,
+    flexDirection: 'row', alignItems: 'center',
+    width: '100%', padding: 16, borderRadius: 16, marginBottom: 12,
+    borderWidth: 1, borderColor: '#f1f3f5'
   },
-  modalButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+  modalButtonLost: { backgroundColor: '#fff' },
+  modalButtonFound: { backgroundColor: '#fff' },
+  
+  modalIconBox: {
+    width: 48, height: 48, borderRadius: 24, backgroundColor: '#f8f9fa',
+    justifyContent: 'center', alignItems: 'center', marginRight: 15
   },
-  modalCancelButton: {
-    marginTop: 15,
-    padding: 10,
-  },
-  modalCancelText: {
-    color: '#999',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  modalButtonTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 2 },
+  modalButtonDesc: { fontSize: 13, color: '#888' },
+
+  modalCancelButton: { marginTop: 10, padding: 10 },
+  modalCancelText: { color: '#999', fontSize: 15, fontWeight: '600' },
 });

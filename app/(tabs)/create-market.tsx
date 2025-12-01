@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 20 },
 
   imageSection: { marginBottom: 20 },
-  imageList: { gap: 10, paddingRight: 20 },
+  imageList: { alignItems: 'center', paddingVertical: 5, gap: 10, paddingRight: 10 },
   
   addImageButton: { 
     width: 80, height: 80, 
