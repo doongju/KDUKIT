@@ -21,7 +21,6 @@ import {
   ActivityIndicator,
   Alert,
   BackHandler,
-  Dimensions,
   FlatList,
   Platform,
   RefreshControl,
@@ -40,8 +39,6 @@ import { db } from '../../firebaseConfig';
 import { Image } from 'expo-image';
 // [추가] 이미지 확대 뷰어
 import ImageView from 'react-native-image-viewing';
-
-const SCREEN_WIDTH = Dimensions.get('window').width;
 
 // --- Types ---
 interface ClubPost {

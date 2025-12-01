@@ -6,7 +6,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -50,17 +50,17 @@ export default function CreateLostItemScreen() {
   const [uploadingImage, setUploadingImage] = useState(false);
 
   // ✨ [추가] 뒤로가기 핸들러 (무조건 분실물 목록으로 이동)
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     // replace를 사용하여 스택에 쌓이지 않고 깔끔하게 이동
     router.replace('/(tabs)/lost-and-found');
     return true; // 안드로이드 BackHandler를 위해 true 반환
-  };
+  },[router]);
 
   // ✨ [추가] 하드웨어 뒤로가기 버튼(안드로이드) 제어
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBack);
     return () => backHandler.remove();
-  }, []);
+  }, [handleBack]);
 
   const pickImage = async () => {
     if (selectedImages.length >= MAX_IMAGES) {

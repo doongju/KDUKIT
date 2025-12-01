@@ -6,7 +6,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { useEffect, useRef, useState } from 'react'; // ✨ useRef 추가
+import { useCallback, useEffect, useRef, useState } from 'react'; // ✨ useRef 추가
 import {
   ActivityIndicator,
   Alert,
@@ -25,7 +25,7 @@ import {
   TouchableWithoutFeedback, // ✨ TouchableWithoutFeedback 추가
   View
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { db, storage } from '../../firebaseConfig';
 
@@ -34,7 +34,6 @@ const MEMBER_LIMIT_OPTIONS = [...Array.from({ length: 11 }, (_, i) => (i + 2).to
 const MAX_IMAGES = 10;
 
 export default function CreateClubScreen() {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams(); 
   const auth = getAuth();
@@ -58,15 +57,15 @@ export default function CreateClubScreen() {
   const [modalType, setModalType] = useState<'activityField' | 'memberLimit' | null>(null);
 
   // 뒤로가기 핸들러
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     router.replace('/(tabs)/clublist');
     return true; 
-  };
+  },[router]);
 
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBack);
     return () => backHandler.remove();
-  }, []);
+  }, [handleBack]);
 
   // 초기화 및 데이터 채우기
   useEffect(() => {

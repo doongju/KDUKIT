@@ -41,7 +41,7 @@ import BuyerReviewModal from '../../components/BuyerReviewModal';
 import ReviewModal from '../../components/ReviewModal';
 import UserProfileModal from '../../components/UserProfileModal';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // --- 인터페이스 ---
 interface MarketPost {
