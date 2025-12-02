@@ -24,53 +24,102 @@ interface ChatRoom {
   lastMessage?: string;
   lastMessageTimestamp?: any;
   members: string[];
-  type: 'private' | 'party' | 'dm';
+  // ✨ [수정] 'lost-item' 타입 추가
+  type: 'private' | 'party' | 'dm' | 'club' | 'market' | 'lost-item' | string; 
 }
 
-// ✨ [최적화] 리스트 아이템 컴포넌트 분리 (메모이제이션)
 const ChatRoomItem = memo(({ item, onPress, onLongPress }: { item: ChatRoom, onPress: (id: string) => void, onLongPress: (id: string, name: string) => void }) => {
-    let iconName: keyof typeof Ionicons.glyphMap = "person";
-    if (item.type === 'party') iconName = "car-sport";
-    else if (item.type === 'dm') iconName = "people";
+  
+  // 기본 설정 (1:1 채팅)
+  let iconName: keyof typeof Ionicons.glyphMap = "chatbubble-ellipses";
+  let iconColor = "#0062ffff"; // 파랑
+  let iconBg = "#e8f0fe";
+  let badgeText = "1:1";
+  let badgeColor = "#f0f8ff";
+  let badgeTextColor = "#0062ffff";
 
-    const timeString = item.lastMessageTimestamp 
-        ? new Date(item.lastMessageTimestamp.toDate()).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
-        : '';
+  // 타입별 스타일 분기 처리
+  switch (item.type) {
+    case 'party': // 택시 파티
+      iconName = "car";
+      iconColor = "#2196F3"; // 파랑
+      iconBg = iconColor + '15';
+      badgeText = "택시";
+      badgeColor = iconColor + '15';
+      badgeTextColor = "#2196F3";
+      break;
+    case 'club': // 동아리
+      iconName = "people"; 
+      iconColor = "#FF9800"; // 주황
+      iconBg = iconColor + '15';
+      badgeText = "동아리";
+      badgeColor = iconColor + '15';
+      badgeTextColor = "#FF9800";
+      break;
+    case 'market': // 중고 장터
+      iconName = "cart"; 
+      iconColor = "#4CAF50"; // 초록
+      iconBg = iconColor + '15';
+      badgeText = "중고장터";
+      badgeColor = iconColor + '15';
+      badgeTextColor = "#4CAF50";
+      break;
+    // ✨ [추가] 분실물 센터
+    case 'lost-item': 
+      iconName = "search"; 
+      iconColor = "#FF5252"; // 빨강
+      iconBg = iconColor + '15';
+      badgeText = "분실물";
+      badgeColor = iconColor + '15';
+      badgeTextColor = "#FF5252";
+      break;
+    case 'dm':
+    default:
+      break;
+  }
 
-    return (
-      <TouchableOpacity
-        style={styles.chatRoomItem}
-        onPress={() => onPress(item.id)}
-        onLongPress={() => onLongPress(item.id, item.name)}
-        delayLongPress={500}
-        activeOpacity={0.7}
-      >
-        <View style={styles.chatRoomIcon}>
-          <Ionicons name={iconName} size={24} color="#0062ffff" />
-        </View>
-        
-        <View style={styles.chatRoomInfo}>
-          <Text style={styles.chatRoomName} numberOfLines={1}>
+  const timeString = item.lastMessageTimestamp
+    ? new Date(item.lastMessageTimestamp.toDate()).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  return (
+    <TouchableOpacity
+      style={styles.cardContainer}
+      onPress={() => onPress(item.id)}
+      onLongPress={() => onLongPress(item.id, item.name)}
+      delayLongPress={500}
+      activeOpacity={0.7}
+    >
+      {/* 아이콘 영역 */}
+      <View style={[styles.cardIcon, { backgroundColor: iconBg }]}>
+        <Ionicons name={iconName} size={26} color={iconColor} />
+      </View>
+
+      {/* 정보 영역 */}
+      <View style={styles.cardContent}>
+        <View style={styles.cardHeader}>
+          {/* 배지 표시 */}
+          <View style={[styles.badge, { backgroundColor: badgeColor }]}>
+            <Text style={[styles.badgeText, { color: badgeTextColor }]}>{badgeText}</Text>
+          </View>
+          
+          <Text style={styles.roomName} numberOfLines={1}>
             {item.name}
           </Text>
-          {item.lastMessage ? (
-            <Text style={styles.lastMessage} numberOfLines={1}>
-              {item.lastMessage}
-            </Text>
-          ) : (
-            <Text style={[styles.lastMessage, { color: '#aaa' }]}>
-              대화 내용이 없습니다.
-            </Text>
-          )}
         </View>
-        
-        <Text style={styles.timestamp}>{timeString}</Text>
-      </TouchableOpacity>
-    );
+
+        <View style={styles.messageRow}>
+            <Text style={styles.lastMessage} numberOfLines={1}>
+            {item.lastMessage || "대화 내용이 없습니다."}
+            </Text>
+            <Text style={styles.timestamp}>{timeString}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
 }, (prev, next) => {
-    // ✨ [핵심] 메시지 내용이나 시간이 바뀌지 않으면 리렌더링 안 함
-    return prev.item.lastMessage === next.item.lastMessage && 
-           prev.item.lastMessageTimestamp?.toMillis() === next.item.lastMessageTimestamp?.toMillis();
+  return prev.item.lastMessage === next.item.lastMessage &&
+         prev.item.lastMessageTimestamp?.toMillis() === next.item.lastMessageTimestamp?.toMillis();
 });
 ChatRoomItem.displayName = 'ChatRoomItem';
 
@@ -90,8 +139,6 @@ export default function ChatListScreen() {
         setChatRooms([]);
         return;
       }
-      // 로딩 상태를 다시 true로 바꾸지 않음 (화면 깜빡임 방지)
-      // setLoading(true); 
 
       const q = query(
         collection(db, 'chatRooms'),
@@ -103,8 +150,9 @@ export default function ChatListScreen() {
         querySnapshot.forEach((doc) => {
             const data = doc.data();
             let roomName = data.name;
-            if (data.type === 'dm') roomName = data.name || '문의 채팅';
-            
+            if (data.type === 'dm' && !roomName) roomName = '알 수 없는 대화';
+            if (!roomName) roomName = '채팅방';
+
             rooms.push({
                 id: doc.id,
                 partyId: data.partyId,
@@ -112,10 +160,9 @@ export default function ChatListScreen() {
                 lastMessage: data.lastMessage,
                 lastMessageTimestamp: data.lastMessageTimestamp,
                 members: data.members,
-                type: data.type,
+                type: data.type || 'dm', 
             });
         });
-        // 최신순 정렬
         rooms.sort((a, b) => (b.lastMessageTimestamp?.toMillis() || 0) - (a.lastMessageTimestamp?.toMillis() || 0));
         setChatRooms(rooms);
         setLoading(false);
@@ -125,7 +172,7 @@ export default function ChatListScreen() {
   );
 
   const handleChatRoomPress = useCallback((chatRoomId: string) => {
-    router.push(`/chat/${chatRoomId}`); 
+    router.push(`/chat/${chatRoomId}`);
   }, [router]);
 
   const handleLongPressChatRoom = useCallback((chatRoomId: string, roomName: string) => {
@@ -148,7 +195,10 @@ export default function ChatListScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <Text style={styles.header}>채팅 목록</Text>
+      <View style={styles.headerContainer}>
+        <Text style={styles.headerTitle}>채팅 목록</Text>
+      </View>
+
       {loading ? (
         <ActivityIndicator size="large" color="#0062ffff" style={{ marginTop: 50 }} />
       ) : (
@@ -156,16 +206,13 @@ export default function ChatListScreen() {
           data={chatRooms}
           renderItem={renderItem}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContentContainer}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
                 <Ionicons name="chatbubbles-outline" size={80} color="#ccc" />
-                <Text style={styles.emptyText}>대화가 없습니다.</Text>
+                <Text style={styles.emptyText}>참여 중인 대화가 없습니다.</Text>
             </View>
           }
-          initialNumToRender={10}
-          maxToRenderPerBatch={5}
-          windowSize={5}
         />
       )}
     </View>
@@ -173,15 +220,91 @@ export default function ChatListScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  header: { fontSize: 28, fontWeight: 'bold', paddingHorizontal: 20, marginBottom: 15, color: '#0062ffff' },
-  listContentContainer: { paddingHorizontal: 20, paddingBottom: 20 },
-  chatRoomItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 15, borderRadius: 10, marginBottom: 10, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
-  chatRoomIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#e8f0fe', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  chatRoomInfo: { flex: 1, justifyContent: 'center' },
-  chatRoomName: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 2 },
-  lastMessage: { fontSize: 14, color: '#666' },
-  timestamp: { fontSize: 12, color: '#999', marginLeft: 10 },
-  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, marginTop: 50 },
-  emptyText: { fontSize: 16, color: '#555', marginTop: 10 },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#f5f5f5' 
+  },
+  headerContainer: {
+    paddingHorizontal: 15,
+    paddingVertical: 15,
+    backgroundColor: '#f5f5f5',
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  listContent: {
+    paddingHorizontal: 20,
+  },
+  cardContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  cardIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  cardContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  badge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginRight: 6,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  roomName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#222',
+    flexShrink: 1,
+  },
+  messageRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  lastMessage: {
+    fontSize: 14,
+    color: '#666',
+    flex: 1,
+    marginRight: 10,
+  },
+  timestamp: {
+    fontSize: 12,
+    color: '#999',
+    fontWeight: '500',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    marginTop: 50,
+  },
+  emptyText: { fontSize: 16, color: '#888', marginTop: 15 },
 });

@@ -194,8 +194,8 @@ const ShuttleScreen = () => {
   // 테스트 데이터
   const getTestSchedules = (): ScheduleItem[] => {
     return [
-      { time: '02:05', note: 'TEST (곧 도착)' },
-      { time: '02:08', note: 'TEST (다음 차)' },
+      { time: '23:05', note: 'TEST (곧 도착)' },
+      { time: '23:10', note: 'TEST (다음 차)' },
     ];
   };
 
@@ -336,7 +336,7 @@ const ShuttleScreen = () => {
           if (myCancelCount >= 3) {
             await updateDoc(userRef, {
                 cancelCount: increment(1),
-                trustScore: increment(-10) 
+                trustScore: increment(-15) 
             });
             Alert.alert('신뢰도 차감', '반복된 취소로 신뢰도가 차감되었습니다.');
           } else {

@@ -6,13 +6,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { useCallback, useEffect, useRef, useState } from 'react'; // ✨ useRef 추가
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   BackHandler,
   Image,
-  Keyboard, // ✨ Keyboard 추가
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -22,7 +22,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback, // ✨ TouchableWithoutFeedback 추가
+  TouchableWithoutFeedback,
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -39,7 +39,6 @@ export default function CreateClubScreen() {
   const auth = getAuth();
   const currentUser = auth.currentUser;
 
-  // ✨ ScrollView 제어를 위한 Ref 생성
   const scrollViewRef = useRef<ScrollView>(null);
 
   const [clubName, setClubName] = useState('');
@@ -56,7 +55,6 @@ export default function CreateClubScreen() {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [modalType, setModalType] = useState<'activityField' | 'memberLimit' | null>(null);
 
-  // 뒤로가기 핸들러
   const handleBack = useCallback(() => {
     router.replace('/(tabs)/clublist');
     return true; 
@@ -67,7 +65,6 @@ export default function CreateClubScreen() {
     return () => backHandler.remove();
   }, [handleBack]);
 
-  // 초기화 및 데이터 채우기
   useEffect(() => {
     if (params.postId) {
       setClubName(params.initialClubName as string || '');
@@ -117,11 +114,10 @@ export default function CreateClubScreen() {
         '설정에서 사진 라이브러리 접근 권한을 허용해주세요.',
         [
           { text: '취소', style: 'cancel' },
-          { text: '설정으로 이동', onPress: () => Linking.openSettings() } // 설정창 이동
+          { text: '설정으로 이동', onPress: () => Linking.openSettings() } 
         ]
       );    
       return;
-      
     }
 
     let result = await ImagePicker.launchImageLibraryAsync({
@@ -211,6 +207,8 @@ export default function CreateClubScreen() {
           memberLimit: limitNumber,
           imageUrl: finalImageUrls[0] || null, 
           imageUrls: finalImageUrls, 
+          // ✨ [핵심 수정] type: 'club' 추가
+          type: 'club', 
       };
 
       if (targetPostId) {
@@ -275,7 +273,6 @@ export default function CreateClubScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ✨ KeyboardAvoidingView + TouchableWithoutFeedback 구조 적용 */}
       <KeyboardAvoidingView 
         behavior={Platform.OS === "ios" ? "padding" : "height"} 
         style={{flex: 1}}
@@ -283,7 +280,7 @@ export default function CreateClubScreen() {
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView 
-              ref={scrollViewRef} // ✨ ref 연결
+              ref={scrollViewRef} 
               contentContainerStyle={styles.scrollContent} 
               showsVerticalScrollIndicator={false}
           >

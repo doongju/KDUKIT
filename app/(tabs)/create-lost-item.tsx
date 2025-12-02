@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  BackHandler, // ✨ 추가: 안드로이드 뒤로가기 제어
+  BackHandler,
   Image,
   Linking,
   ScrollView,
@@ -49,14 +49,11 @@ export default function CreateLostItemScreen() {
   const [loading, setLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
 
-  // ✨ [추가] 뒤로가기 핸들러 (무조건 분실물 목록으로 이동)
   const handleBack = useCallback(() => {
-    // replace를 사용하여 스택에 쌓이지 않고 깔끔하게 이동
     router.replace('/(tabs)/lost-and-found');
-    return true; // 안드로이드 BackHandler를 위해 true 반환
+    return true; 
   },[router]);
 
-  // ✨ [추가] 하드웨어 뒤로가기 버튼(안드로이드) 제어
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBack);
     return () => backHandler.remove();
@@ -140,7 +137,15 @@ export default function CreateLostItemScreen() {
       const mainImageUrl = validUrls.length > 0 ? validUrls[0] : null;
 
       const itemData = {
-        type: mode,
+        // ✨ [핵심 수정] 여기서 mode가 'lost' 또는 'found'인데, 
+        // 채팅방 타입 구분을 위해 'lost-item'이라는 공통 타입을 하나 더 추가하거나
+        // mode 자체를 활용할 수 있습니다. 여기선 'type' 필드에 'lost-item'을 강제로 넣어줍니다.
+        // (기존의 type 필드는 mode로 이름을 바꿔서 쓰고 있었으므로, 
+        //  DB에는 'postType' 같은 이름으로 저장하거나, 'type'을 덮어쓰되 필요한 정보를 다른 필드로 뺍니다.)
+        
+        postType: mode, // 'lost' or 'found' (분실/습득 구분용)
+        type: 'lost-item', // ✨ [추가] 채팅방 아이콘 표시용
+        
         itemName: itemName.trim(),
         description: description.trim(),
         location: lostLocation.trim(),
@@ -155,7 +160,6 @@ export default function CreateLostItemScreen() {
       await addDoc(collection(db, "lostAndFoundItems"), itemData);
       
       Alert.alert('등록 완료', '성공적으로 등록되었습니다.', [
-        // 등록 완료 시에도 목록으로 이동
         { text: '확인', onPress: () => router.replace('/(tabs)/lost-and-found') }
       ]);
 
@@ -175,7 +179,6 @@ export default function CreateLostItemScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.headerBar}>
-        {/* ✨ [수정] 뒤로가기 버튼에 handleBack 연결 */}
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={28} color={primaryColor} /> 
         </TouchableOpacity>
