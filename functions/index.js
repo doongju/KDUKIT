@@ -6,11 +6,10 @@ const cors = require("cors")({ origin: true });
 admin.initializeApp();
 
 // ==========================================
-// 🛠️ [공통 함수] Expo 서버로 알림 쏘기 (중복 제거)
+// 🛠️ [공통 함수] Expo 서버로 알림 쏘기
 // ==========================================
 async function sendToExpo(messages) {
   try {
-    // fetch는 Node.js 18 이상에서 기본 지원됩니다.
     const response = await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
       headers: {
@@ -74,7 +73,7 @@ exports.sendVerificationCode = functions.https.onCall(async (data, context) => {
 });
 
 // ==========================================
-// 2. 채팅 알림 (리팩토링: 공통 함수 사용)
+// 2. 채팅 알림
 // ==========================================
 exports.sendChatNotification = functions.firestore
   .document("chatRooms/{chatRoomId}/messages/{messageId}")
@@ -112,7 +111,6 @@ exports.sendChatNotification = functions.firestore
       }
 
       if (messagesToSend.length > 0) {
-        // 
         await sendToExpo(messagesToSend);
       }
 
@@ -122,7 +120,7 @@ exports.sendChatNotification = functions.firestore
   });
 
 // ==========================================
-// 3. 마켓 상태 변경 알림 (2번 찜, 4번 후기)
+// 3. 마켓 상태 변경 알림
 // ==========================================
 exports.sendMarketStatusNotification = functions.firestore
   .document("marketPosts/{postId}")
@@ -131,12 +129,11 @@ exports.sendMarketStatusNotification = functions.firestore
     const after = change.after.data();
     const postId = context.params.postId;
 
-    // '판매중' -> '판매완료'로 바뀔 때만 동작
     if (before.status !== "판매완료" && after.status === "판매완료") {
       
       const messagesToSend = [];
 
-      // (1) 구매자에게: "구매 확정 감사합니다! 후기 남겨주세요" (4번 기능)
+      // (1) 구매자에게
       if (after.buyerId) {
         const buyerSnap = await admin.firestore().collection("users").doc(after.buyerId).get();
         const buyerData = buyerSnap.data();
@@ -144,16 +141,15 @@ exports.sendMarketStatusNotification = functions.firestore
         if (buyerData && buyerData.pushToken && buyerData.pushToken.startsWith("ExponentPushToken")) {
           messagesToSend.push({
             to: buyerData.pushToken,
-            title: "거래가 완료되었습니다! 🎉",
-            body: "구매 후기를 남겨주세요. 판매자에게 큰 힘이 됩니다.",
+            title: "거래 완료! 📦",
+            body: "구매가 확정되었습니다. 거래 후기를 남겨주세요.",
             data: { url: "/(tabs)/marketlist" },
             _displayInForeground: true,
           });
         }
       }
 
-      // (2) 찜한 사람들에게: "아쉽지만 판매 완료되었어요" (2번 기능)
-      // users 컬렉션에서 wishlist 배열에 이 postId가 있는 사람들을 찾습니다.
+      // (2) 찜한 사람들에게
       const wishersSnap = await admin.firestore()
         .collection("users")
         .where("wishlist", "array-contains", postId)
@@ -161,12 +157,11 @@ exports.sendMarketStatusNotification = functions.firestore
 
       wishersSnap.forEach((doc) => {
         const userData = doc.data();
-        // 구매자 본인은 제외하고 보냄
         if (doc.id !== after.buyerId && userData.pushToken && userData.pushToken.startsWith("ExponentPushToken")) {
           messagesToSend.push({
             to: userData.pushToken,
-            title: "찜한 상품 판매 완료 🥲",
-            body: `'${after.title}' 상품이 판매 완료되었습니다.`,
+            title: "아쉽네요 🥲",
+            body: `찜하신 '${after.title}' 상품이 판매 완료되었습니다.`,
             data: { url: "/(tabs)/marketlist" },
             _displayInForeground: true,
           });
@@ -179,28 +174,58 @@ exports.sendMarketStatusNotification = functions.firestore
     }
   });
 
+// ==========================================
+// 4. 신뢰도 변경 알림 (멘트 세분화 완료!)
+// ==========================================
 exports.sendTrustScoreNotification = functions.firestore
   .document("users/{userId}")
   .onUpdate(async (change, context) => {
     const before = change.before.data();
     const after = change.after.data();
     
-    // 점수 변화가 없으면 무시
+    // 점수 변화 없으면 무시
     if (before.trustScore === after.trustScore) return;
 
     const messagesToSend = [];
+    const diff = after.trustScore - before.trustScore; // 변화량 (양수면 상승, 음수면 하락)
+    
+    if (after.pushToken && after.pushToken.startsWith("ExponentPushToken")) {
+        let title = "";
+        let body = "";
 
-    // 1. 점수가 떨어졌을 때 (하락 알림)
-    if (before.trustScore > after.trustScore) {
-      const diff = before.trustScore - after.trustScore;
-      
-      if (after.pushToken && after.pushToken.startsWith("ExponentPushToken")) {
-        let title = "신뢰도가 하락했습니다 📉";
-        let body = `신뢰 점수가 ${diff}점 차감되어 ${after.trustScore}점이 되었습니다.`;
+        // (1) 점수 상승 (칭찬)
+        if (diff > 0) {
+            title = "신뢰도가 상승했습니다! 🎉";
+            
+            if (diff === 2) {
+                 // 택시 정상 탑승 (+2)
+                 body = `택시 파티 운행 완료! 신뢰도 2점을 획득했습니다. (현재: ${after.trustScore}점)`;
+            } else if (diff === 3) {
+                 // 중고거래 좋아요 (+3)
+                 body = `기분 좋은 거래 완료! 상대방에게 좋은 평가를 받아 3점을 획득했습니다.`;
+            } else {
+                 // 기타 상승
+                 body = `활동을 통해 신뢰도 ${diff}점을 얻어 ${after.trustScore}점이 되었습니다.`;
+            }
+        } 
+        
+        // (2) 점수 하락 (경고)
+        else {
+            title = "신뢰도가 하락했습니다 📉";
+            const absDiff = Math.abs(diff); // 절댓값
 
-        if (diff >= 4) {
-            title = "패널티 안내 🚨";
-            body = `${diff}점이 차감되었습니다.`;
+            if (absDiff === 7) {
+                // 택시 노쇼 (-7)
+                title = "택시 파티 노쇼 패널티 🚨";
+                body = `약속 불이행(노쇼)으로 인해 7점이 차감되었습니다. 반복 시 이용이 제한될 수 있습니다.`;
+            } else if (absDiff === 15) {
+                // 중고거래 비매너 (-15)
+                title = "비매너 거래 패널티 🚨";
+                body = `부정적인 거래 후기로 인해 15점이 대폭 차감되었습니다. 매너 있는 거래를 부탁드립니다.`;
+            } else {
+                // 기타 하락
+                body = `신뢰 점수가 ${absDiff}점 차감되어 ${after.trustScore}점이 되었습니다.`;
+            }
         }
 
         messagesToSend.push({
@@ -210,25 +235,7 @@ exports.sendTrustScoreNotification = functions.firestore
           data: { url: "/profile" },
           _displayInForeground: true,
         });
-      }
-    }
 
-    // ✨ 2. 점수가 올랐을 때 (상승 알림 - 추가됨!)
-    if (after.trustScore > before.trustScore) {
-      const diff = after.trustScore - before.trustScore;
-      
-      if (after.pushToken && after.pushToken.startsWith("ExponentPushToken")) {
-        messagesToSend.push({
-          to: after.pushToken,
-          title: "신뢰도가 상승했습니다! 🎉",
-          body: `신뢰 점수가 ${diff}점을 얻어 ${after.trustScore}점이 되었습니다.`,
-          data: { url: "/profile" },
-          _displayInForeground: true,
-        });
-      }
-    }
-
-    if (messagesToSend.length > 0) {
-      await sendToExpo(messagesToSend);
+        await sendToExpo(messagesToSend);
     }
   });
