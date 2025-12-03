@@ -50,7 +50,7 @@ const generateTimeOptions = () => {
   const endHour = 19; 
 
   for (let h = startHour; h < endHour; h++) {
-    options.push({ label: `${String(h).padStart(2, '0')}:00`, value: h });
+    options.push({ label: `${String(h).padStart(2, '0')}:30`, value: h });
   }
   options.push({ label: `${endHour}:00`, value: endHour });
   
