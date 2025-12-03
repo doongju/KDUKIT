@@ -4,7 +4,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+// ✨ [수정] getDoc 추가
+import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -188,6 +189,18 @@ export default function CreateClubScreen() {
     setUploadingImage(true);
 
     try {
+      // ✨ [추가] 사용자 정보(displayId) 가져오기 로직
+      const userDocRef = doc(db, "users", currentUser.uid);
+      const userSnapshot = await getDoc(userDocRef);
+      
+      let authorName = "익명"; 
+      if (userSnapshot.exists()) {
+          const userData = userSnapshot.data();
+          if (userData.displayId) {
+              authorName = userData.displayId; // 예: "12학번 컴퓨터공학과 #A123"
+          }
+      }
+
       const uploadPromises = imageUrls.map(uri => uploadSingleImage(uri));
       const uploadedUrls = await Promise.all(uploadPromises);
       const finalImageUrls = uploadedUrls.filter((url): url is string => url !== null);
@@ -207,7 +220,10 @@ export default function CreateClubScreen() {
           memberLimit: limitNumber,
           imageUrl: finalImageUrls[0] || null, 
           imageUrls: finalImageUrls, 
-          type: 'club', 
+          type: 'club',
+          
+          // ✨ [추가] 작성자 식별 ID 저장
+          creatorName: authorName, 
       };
 
       if (targetPostId) {
@@ -382,7 +398,7 @@ export default function CreateClubScreen() {
                   </View>
               </View>
 
-              {/* ✨ [추가] 하단 등록 버튼 */}
+              {/* 등록 버튼 */}
               <TouchableOpacity 
                   style={[
                       styles.registerButton, 
@@ -493,7 +509,6 @@ const styles = StyleSheet.create({
   selectButtonText: { fontSize: 16, color: '#333' },
   textArea: { minHeight: 150, lineHeight: 24 },
 
-  // ✨ [추가] 등록 버튼 스타일
   registerButton: { 
     backgroundColor: '#0062ffff', // 메인 컬러
     paddingVertical: 18, 

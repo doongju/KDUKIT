@@ -4,7 +4,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+// ✨ [수정] getDoc, doc 추가
+import { addDoc, collection, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { useState } from 'react';
 import {
   Alert,
@@ -57,7 +58,6 @@ interface PickerItemData {
   value: any;
 }
 
-// ✨ 시간표 앱과 동일한 스타일의 CustomPicker (Slide Modal)
 const CustomPicker = ({ 
   selectedValue, 
   onValueChange, 
@@ -113,7 +113,6 @@ const CustomPicker = ({
         onRequestClose={() => setShowIosPicker(false)}
       >
         <View style={pickerStyles.modalOverlay}>
-          {/* 배경 클릭 시 닫기 */}
           <TouchableOpacity style={{flex:1}} onPress={() => setShowIosPicker(false)} />
           <View style={pickerStyles.modalContent}>
             <View style={pickerStyles.modalHeader}>
@@ -169,17 +168,31 @@ export default function CreatePartyScreen() {
       return;
     }
 
-    const partyDetails = {
-      departureTime: finalDepartureTime,
-      pickupLocation: finalPickup,
-      dropoffLocation: finalDropoff,
-      memberLimit,
-      currentMembers: [user.uid], 
-      creatorId: user.uid,
-      createdAt: serverTimestamp(),
-    };
-    
     try {
+      // ✨ [추가] 사용자 정보(displayId) 가져오기
+      const userDocRef = doc(db, "users", user.uid);
+      const userSnapshot = await getDoc(userDocRef);
+      
+      let authorName = "익명"; 
+      if (userSnapshot.exists()) {
+          const userData = userSnapshot.data();
+          if (userData.displayId) {
+              authorName = userData.displayId; // 예: "12학번 컴퓨터공학과 #A123"
+          }
+      }
+
+      const partyDetails = {
+        departureTime: finalDepartureTime,
+        pickupLocation: finalPickup,
+        dropoffLocation: finalDropoff,
+        memberLimit,
+        currentMembers: [user.uid], 
+        creatorId: user.uid,
+        // ✨ [추가] 개설자 이름(식별 ID) 저장
+        creatorName: authorName,
+        createdAt: serverTimestamp(),
+      };
+      
       await addDoc(collection(db, "taxiParties"), partyDetails);
       Alert.alert('파티 생성 완료', '새로운 택시 파티가 생성되었습니다!');
       router.back();
@@ -386,7 +399,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 200, // 버튼 가림 방지
+    paddingBottom: 200, 
   },
 
   sectionHeader: {

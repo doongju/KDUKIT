@@ -4,7 +4,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+// ✨ [수정] getDoc 추가
+import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -164,6 +165,18 @@ export default function CreateMarketScreen() {
     setUploadingImage(true);
     
     try {
+        // ✨ [추가] 사용자 정보(displayId) 가져오기
+        const userDocRef = doc(db, "users", currentUser.uid);
+        const userSnapshot = await getDoc(userDocRef);
+        
+        let authorName = "익명"; 
+        if (userSnapshot.exists()) {
+            const userData = userSnapshot.data();
+            if (userData.displayId) {
+                authorName = userData.displayId; // 예: "12학번 컴퓨터공학과 #A123"
+            }
+        }
+
         const uploadPromises = selectedImages.map(uri => uploadSingleImage(uri));
         const uploadedUrls = await Promise.all(uploadPromises);
         const validUrls = uploadedUrls.filter((url): url is string => url !== null);
@@ -180,6 +193,8 @@ export default function CreateMarketScreen() {
             creatorId: currentUser.uid,
             type: 'market', 
             updatedAt: serverTimestamp(),
+            // ✨ [추가] 작성자 이름(식별 ID) 저장
+            creatorName: authorName, 
         };
 
         if (params.postId) {
@@ -387,8 +402,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 17, fontWeight: '700', color: '#333' },
   headerButton: { padding: 5, minWidth: 40, alignItems: 'center' },
   
-  // 헤더 텍스트 스타일 삭제됨 (사용하지 않음)
-
   scrollContent: { padding: 20 },
 
   imageSection: { marginBottom: 20 },
@@ -427,7 +440,6 @@ const styles = StyleSheet.create({
   currencySymbol: { fontSize: 20, fontWeight: '600', marginRight: 8 },
   priceInput: { flex: 1, fontSize: 20, fontWeight: '700', color: '#333', paddingVertical: 5 },
 
-  // ✨ [추가] 등록 버튼 스타일
   registerButton: { 
     backgroundColor: '#0062ffff', // 마켓 메인 컬러
     paddingVertical: 18, 

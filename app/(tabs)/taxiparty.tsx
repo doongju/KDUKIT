@@ -1,9 +1,19 @@
-// app/(tabs)/taxiparty.tsx
-
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-import { arrayUnion, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import {
+  arrayUnion,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc
+} from 'firebase/firestore';
 import { memo, useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -29,9 +39,9 @@ interface TaxiParty {
   currentMembers: string[];
   creatorId: string;
   createdAt: any; 
+  creatorName?: string; 
 }
 
-// 멤버 슬롯 시각화 컴포넌트
 const MemberSlots = ({ current, limit }: { current: number, limit: number }) => {
   const slots = Array.from({ length: limit }, (_, i) => i < current);
   
@@ -53,9 +63,10 @@ const MemberSlots = ({ current, limit }: { current: number, limit: number }) => 
   );
 };
 
-const PartyItem = memo(({ item, user, onPressProfile, onJoin, onChat, onFinish, onDelete }: any) => {
-    const isCreator = user && user.uid === item.creatorId;
-    const isMember = user && item.currentMembers.includes(user.uid);
+// ✨ [최적화] user 객체 대신 currentUserId(string)만 받음
+const PartyItem = memo(({ item, currentUserId, onPressProfile, onJoin, onChat, onFinish, onDelete }: any) => {
+    const isCreator = currentUserId && currentUserId === item.creatorId;
+    const isMember = currentUserId && item.currentMembers.includes(currentUserId);
     const isFull = item.currentMembers.length >= item.memberLimit;
     
     let statusText = "모집중";
@@ -78,7 +89,7 @@ const PartyItem = memo(({ item, user, onPressProfile, onJoin, onChat, onFinish, 
         <View style={styles.cardHeader}>
           {isCreator ? (
             <View style={styles.myBadge}>
-              <Text style={styles.myBadgeText}>MY PARTY</Text>
+              <Text style={styles.myBadgeText}>내가 만든 파티</Text>
             </View>
           ) : <View />} 
           
@@ -109,11 +120,24 @@ const PartyItem = memo(({ item, user, onPressProfile, onJoin, onChat, onFinish, 
             </View>
         </View>
 
-        {/* 3. 인원 현황 */}
+        {/* 3. 인원 현황 및 개설자 정보 */}
         <View style={styles.slotRow}>
-            <Text style={styles.slotLabel}>참여 현황</Text>
-            <TouchableOpacity onPress={() => onPressProfile(item.creatorId)}>
-                <MemberSlots current={item.currentMembers.length} limit={item.memberLimit} />
+            <View>
+                <Text style={styles.slotLabel}>참여 현황</Text>
+                <TouchableOpacity onPress={() => onPressProfile(item.creatorId)}>
+                    <MemberSlots current={item.currentMembers.length} limit={item.memberLimit} />
+                </TouchableOpacity>
+            </View>
+            
+            {/* ✨ [수정] 개설자 정보 버튼: 바로 모달 열기 */}
+            <TouchableOpacity 
+                style={styles.creatorInfoButton} 
+                onPress={() => onPressProfile(item.creatorId)} 
+                activeOpacity={0.6}
+            >
+                <Ionicons name="person-circle-outline" size={14} color="#555" style={{marginRight: 4}}/>
+                <Text style={styles.creatorInfoText}>방장 프로필</Text>
+                <Ionicons name="chevron-forward" size={12} color="#999" style={{marginLeft: 2}}/>
             </TouchableOpacity>
         </View>
 
@@ -165,7 +189,8 @@ export default function TaxiPartyScreen() {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const partiesData = querySnapshot.docs.map(doc => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
+        creatorName: doc.data().creatorName || null
       })) as TaxiParty[];
       setParties(partiesData);
       setLoading(false);
@@ -177,7 +202,6 @@ export default function TaxiPartyScreen() {
     router.push('/create-party');
   };
 
-  // 파티 삭제 (휴지통 버튼)
   const handleDeleteParty = (partyId: string, creatorId: string) => {
     if (!user || user.uid !== creatorId) return;
     Alert.alert("파티 삭제", "정말 삭제하시겠습니까?", [
@@ -188,7 +212,6 @@ export default function TaxiPartyScreen() {
     ]);
   };
 
-  // ✨ [수정] 운행 완료 처리 (팝업 대신 Alert 사용)
   const handleFinishParty = (party: TaxiParty) => {
     Alert.alert(
       "운행 완료",
@@ -256,17 +279,18 @@ export default function TaxiPartyScreen() {
     } catch (e) { console.error(e); }
   };
 
+  // ✨ [최적화] currentUserId 전달 (객체 아님)
   const renderPartyItem = useCallback(({ item }: { item: TaxiParty }) => (
       <PartyItem 
         item={item} 
-        user={user} 
+        currentUserId={user?.uid} 
         onPressProfile={setProfileUserId}
         onJoin={handleJoinParty}
         onChat={navigateToPartyChat}
-        onFinish={handleFinishParty} // ✨ 여기 함수 연결
+        onFinish={handleFinishParty} 
         onDelete={handleDeleteParty}
       />
-  ), [user]);
+  ), [user]); // user가 바뀌면(로그인/아웃) 재생성
 
   return (
     <View style={[styles.container]}>
@@ -299,8 +323,6 @@ export default function TaxiPartyScreen() {
         userId={profileUserId}
         onClose={() => setProfileUserId(null)}
       />
-
-      {/* ✨ TaxiFinishModal 제거됨 */}
     </View>
   );
 }
@@ -319,7 +341,6 @@ const styles = StyleSheet.create({
   
   listContentContainer: { padding: 16, paddingBottom: 100 },
   
-  // --- Card Styles ---
   card: { 
     backgroundColor: '#fff', 
     borderRadius: 20, 
@@ -367,7 +388,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  // --- Main Info (Time & Route) ---
   mainInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -391,12 +411,11 @@ const styles = StyleSheet.create({
   routeSection: { flex: 1 },
   routeRow: { flexDirection: 'row', alignItems: 'center' },
   dot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-  routeLineContainer: { paddingLeft: 3.5 }, // dot의 가운데 정렬을 위해
+  routeLineContainer: { paddingLeft: 3.5 }, 
   routeLine: { width: 1, height: 16, backgroundColor: '#eee', marginVertical: 2 },
   routeText: { fontSize: 15, color: '#555', flex: 1 },
   destText: { fontSize: 16, fontWeight: 'bold', color: '#333' },
 
-  // --- Slot Row ---
   slotRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -406,13 +425,25 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 10,
   },
-  slotLabel: { fontSize: 12, color: '#666', fontWeight: '600' },
+  slotLabel: { fontSize: 12, color: '#666', fontWeight: '600', marginBottom: 4 },
   slotContainer: { flexDirection: 'row', alignItems: 'center' },
   slotText: { fontSize: 12, color: '#444', fontWeight: 'bold', marginLeft: 6 },
 
+  // ✨ [수정] 개설자 정보 버튼 스타일 (통일됨)
+  creatorInfoButton: {
+    backgroundColor: '#f8f9fa',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#f1f3f5'
+  },
+  creatorInfoText: { fontSize: 12, color: '#666', fontWeight: '600' },
+
   dividerHorizontal: { height: 1, backgroundColor: '#f0f0f0', marginBottom: 15 },
 
-  // --- Buttons ---
   actionContainer: { flexDirection: 'row' },
   creatorButtons: { flexDirection: 'row', flex: 1, gap: 10 },
   finishBtn: { 
@@ -457,7 +488,6 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
   joinBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
 
-  // --- Empty & FAB ---
   emptyContainer: { alignItems: 'center', marginTop: 100 },
   emptyText: { fontSize: 18, color: '#555', marginTop: 15, fontWeight: 'bold' },
   emptySubText: { fontSize: 14, color: '#999', marginTop: 5 },

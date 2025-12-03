@@ -1,5 +1,3 @@
-// components/UserProfileModal.tsx
-
 import { Ionicons } from '@expo/vector-icons';
 import { getAuth } from 'firebase/auth';
 import { arrayRemove, arrayUnion, doc, onSnapshot, updateDoc } from 'firebase/firestore';
@@ -18,11 +16,11 @@ import ReportModal from './ReportModal';
 
 interface UserProfileModalProps {
   visible: boolean;
-  userId: string | null; // 조회할 상대방 UID
+  userId: string | null;
   onClose: () => void;
 }
 
-// ✨ UserData 인터페이스
+// ✨ UserData 인터페이스 수정 (displayId 추가)
 interface UserData {
   department?: string; 
   email?: string;
@@ -32,6 +30,7 @@ interface UserData {
   blockedUsers?: string[]; 
   wishlist?: string[]; 
   nickname?: string;
+  displayId?: string; // ✨ 식별 코드 (예: 12학번 컴퓨터공학과 #A123)
 }
 
 export default function UserProfileModal({ visible, userId, onClose }: UserProfileModalProps) {
@@ -47,7 +46,6 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
     if (!visible || !userId) {
       setUserData(null);
       setMyBlockedUsers([]);
-      // 모달이 닫히거나 ID가 없으면 로딩 초기화
       setLoading(true);
       return;
     }
@@ -56,13 +54,11 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
 
     setLoading(true);
 
-    // 1. 상대방 프로필 데이터 리스너
     const userDocRef = doc(db, "users", userId);
     const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
       if (docSnap.exists()) {
         setUserData(docSnap.data() as UserData);
       } else {
-        // ✨ 데이터가 없으면 null (탈퇴한 사용자)
         setUserData(null);
       }
       setLoading(false);
@@ -72,7 +68,6 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
       setLoading(false);
     });
 
-    // 2. 현재 사용자(나)의 차단 목록 리스너
     const currentUserDocRef = doc(db, "users", currentUserId);
     const unsubscribeMyBlocked = onSnapshot(currentUserDocRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -93,7 +88,6 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
   }, [visible, userId, currentUserId]);
 
 
-  // 차단/해제 로직
   const handleToggleBlock = async () => {
     if (!currentUserId || !userId) return;
 
@@ -119,7 +113,6 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
   };
 
 
-  // 점수 및 레벨 로직
   const getScoreInfo = (score: number) => {
     if (score >= 90) return { color: '#FFD700', icon: 'trophy', label: '명예 학우 👑' };
     if (score >= 70) return { color: '#0062ffff', icon: 'medal', label: '우수 학우 😎' };
@@ -135,20 +128,12 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
   const reportCount = userData?.reportCount ?? 0;
   const isWarningUser = reportCount >= 3; 
 
-  // ✨ 표시 이름 생성 로직
+  // ✨ [수정] 표시 이름 로직 변경 (개인정보 제거 -> displayId 사용)
   let displayName = "알 수 없음";
 
   if (userData) {
-      let emailPrefix = "";
-      if (userData.email) {
-          const fullId = userData.email.split('@')[0];   
-          emailPrefix = fullId.substring(0, 2);          
-      }
-
-      const dept = userData.department || "학과 미정";
-      const nick = userData.nickname || (userData.name ? userData.name : "");
-
-      displayName = `${emailPrefix} ${dept} ${nick}님`;
+      // displayId가 있으면 보여주고, 없으면(구 유저) '익명 사용자'로 표시
+      displayName = userData.displayId || "익명 사용자";
   }
 
   const canBlock = userId && currentUserId && userId !== currentUserId;
@@ -167,7 +152,6 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
           {loading ? (
             <ActivityIndicator size="large" color="#0062ffff" style={{ marginVertical: 20 }} />
           ) : !userData ? (
-            // ✅ [수정된 부분] 데이터가 없을 때 (탈퇴한 계정) 표시되는 화면
             <View style={styles.deletedContainer}>
                 <Ionicons name="person-remove-outline" size={60} color="#bbb" />
                 <Text style={styles.deletedTitle}>알 수 없음</Text>
@@ -179,12 +163,12 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
                 </Text>
             </View>
           ) : (
-            // ✅ 데이터가 있을 때 (정상 계정) 표시되는 화면
             <>
               <View style={styles.avatarContainer}>
                 <Ionicons name="person-circle" size={80} color={isWarningUser ? "#ff3b30" : "#ccc"} />
               </View>
 
+              {/* ✨ [수정] 식별 코드만 크게 표시 */}
               <Text style={styles.userName}>{displayName}</Text>
               
               <View style={styles.verifiedContainer}>
@@ -216,7 +200,7 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
                 <Text style={[styles.scoreLabel, { color }]}>{label}</Text>
                 
                 <Text style={styles.scoreDesc}>
-                  기본 50점부터 시작하며, 거래/합승 후 평가에 따라 변동됩니다.
+                  기본 50점부터 시작하며, 활동 평가에 따라 변동됩니다.
                 </Text>
               </View>
               
@@ -267,8 +251,10 @@ const styles = StyleSheet.create({
   avatarContainer: {
     marginBottom: 10,
   },
+  
+  // ✨ 이름 스타일 (displayId 표시용)
   userName: {
-    fontSize: 20, fontWeight: 'bold', color: '#333', marginBottom: 4, 
+    fontSize: 22, fontWeight: '800', color: '#333', marginBottom: 6, 
     textAlign: 'center', paddingHorizontal: 5, 
   },
   
@@ -346,7 +332,6 @@ const styles = StyleSheet.create({
     fontSize: 13, color: '#ff3b30', textDecorationLine: 'underline',
   },
 
-  // ✅ 탈퇴 계정 스타일 추가
   deletedContainer: {
     alignItems: 'center', paddingVertical: 20,
   },
