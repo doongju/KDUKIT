@@ -220,6 +220,7 @@ export default function CreateClubScreen() {
             currentMembers: [currentUser.uid],
             creatorId: currentUser.uid,
             createdAt: serverTimestamp(),
+            type: 'club'
         });
         Alert.alert("등록 완료", "모집글이 등록되었습니다.");
       }

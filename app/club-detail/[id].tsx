@@ -5,16 +5,16 @@ import { getAuth } from 'firebase/auth';
 import { arrayUnion, deleteDoc, doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, // ✨ 로딩바 컴포넌트
-    Alert,
-    Dimensions,
-    FlatList,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator, // ✨ 로딩바 컴포넌트
+  Alert,
+  Dimensions,
+  FlatList,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import ImageView from 'react-native-image-viewing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -75,7 +75,7 @@ export default function ClubDetailScreen() {
       { text: "삭제", style: "destructive", onPress: async () => {
           try {
             await deleteDoc(doc(db, "clubPosts", id as string));
-            router.back();
+            router.replace('/(tabs)/clublist');
           } catch { Alert.alert("오류", "삭제 실패"); }
       }}
     ]);
@@ -141,7 +141,7 @@ export default function ClubDetailScreen() {
         await setDoc(chatRoomRef, {
           name: roomName,
           members: sortedUids,
-          type: 'dm',
+          type: 'club',
           clubId: postId,
           createdAt: serverTimestamp(),
           lastReadBy: {[targetUserId]: serverTimestamp(), [currentUserId]: serverTimestamp()}

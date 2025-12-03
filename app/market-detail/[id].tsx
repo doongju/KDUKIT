@@ -3,28 +3,28 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import {
-    arrayRemove,
-    arrayUnion,
-    deleteDoc,
-    doc,
-    getDoc,
-    onSnapshot,
-    serverTimestamp,
-    setDoc,
-    updateDoc
+  arrayRemove,
+  arrayUnion,
+  deleteDoc,
+  doc,
+  getDoc,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+  updateDoc
 } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, // ✨ 로딩바
-    Alert,
-    Dimensions,
-    FlatList,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator, // ✨ 로딩바
+  Alert,
+  Dimensions,
+  FlatList,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import ImageView from 'react-native-image-viewing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -78,7 +78,7 @@ export default function MarketDetailScreen() {
         setPost({ id: docSnap.id, ...docSnap.data() } as MarketPost);
       } else {
         Alert.alert("알림", "삭제된 게시글입니다.");
-        router.back();
+        router.replace('/(tabs)/marketlist');
       }
       // ✨ [핵심 3] 로딩 종료
       setLoading(false);
@@ -113,7 +113,7 @@ export default function MarketDetailScreen() {
       { text: "삭제", style: "destructive", onPress: async () => {
           try {
             await deleteDoc(doc(db, "marketPosts", id as string));
-            router.back();
+            router.replace('/(tabs)/marketlist');
           } catch { Alert.alert("오류", "삭제 실패"); }
       }}
     ]);
@@ -171,7 +171,7 @@ export default function MarketDetailScreen() {
         await setDoc(chatRoomRef, {
           name: `[구매문의] ${post.title}`, 
           members: sortedUids,
-          type: 'dm',
+          type: 'market',
           marketId: post.id,
           createdAt: serverTimestamp(),
           lastMessage: '',
