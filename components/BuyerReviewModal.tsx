@@ -1,5 +1,3 @@
-// components/BuyerReviewModal.tsx
-
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, increment, updateDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
@@ -24,7 +22,7 @@ export default function BuyerReviewModal({ visible, postData, onClose }: BuyerRe
   const [loading, setLoading] = useState(false);
   const [sellerName, setSellerName] = useState("판매자");
 
-  // 판매자 이름(학과) 가져오기
+  // 판매자 정보(학번, 학과, 닉네임) 가져오기
   useEffect(() => {
     if (visible && postData) {
         const fetchSellerName = async () => {
@@ -32,9 +30,31 @@ export default function BuyerReviewModal({ visible, postData, onClose }: BuyerRe
                 const userSnap = await getDoc(doc(db, "users", postData.creatorId));
                 if (userSnap.exists()) {
                     const d = userSnap.data();
-                    if (d.department) setSellerName(d.department); // 학과명 등으로 표시
+                    
+                    // ✨ [수정] 학번 + 학과 + 닉네임 조합하기
+                    let displayName = "판매자";
+                    
+                    if (d.department && d.nickname) {
+                        let entryYear = "";
+                        // 이메일에서 학번(앞 2자리) 추출
+                        if (d.email) {
+                            const prefix = d.email.split('@')[0];
+                            const two = prefix.substring(0, 2);
+                            if (!isNaN(Number(two)) && two.length === 2) {
+                                entryYear = two;
+                            }
+                        }
+                        // 예: "21 컴퓨터공학과 동동주"
+                        displayName = `${entryYear} ${d.department} ${d.nickname}`;
+                    } else if (d.nickname) {
+                        displayName = d.nickname;
+                    }
+
+                    setSellerName(displayName); 
                 }
-            } catch(e) {}
+            } catch(e) {
+                console.log("Seller fetch error", e);
+            }
         };
         fetchSellerName();
     }
@@ -50,9 +70,10 @@ export default function BuyerReviewModal({ visible, postData, onClose }: BuyerRe
         
         if (sellerSnap.exists()) {
             const userData = sellerSnap.data();
+            // ✨ 점수 설정: 좋아요(+3), 별로예요(-15)
             const scoreDelta = isGood ? 3 : -15;
 
-            // ✨ 핵심: 점수가 없으면 50점 기준, 있으면 increment
+            // 점수가 없으면 50점 기준, 있으면 기존 점수에서 증감
             if (userData.trustScore === undefined) {
                 await updateDoc(sellerRef, { trustScore: 50 + scoreDelta });
             } else {
@@ -93,16 +114,18 @@ export default function BuyerReviewModal({ visible, postData, onClose }: BuyerRe
                     <Text style={{fontWeight:'bold', color:'#0062ffff'}}>{postData.title}</Text>
                     {"\n"}거래는 어떠셨나요?
                 </Text>
-                <Text style={styles.subDesc}>'{sellerName}'님에 대한 평가를 남겨주세요.</Text>
+                
+                {/* ✨ 수정된 판매자 정보 표시 */}
+                <Text style={styles.subDesc}>'{sellerName}' 님에 대한 평가를 남겨주세요.</Text>
 
                 <TouchableOpacity style={[styles.rateButton, {backgroundColor: '#e8f5e9'}]} onPress={() => handleReview(true)}>
                     <Ionicons name="happy" size={40} color="#28a745" />
-                    <Text style={[styles.rateText, {color: '#28a745'}]}>좋았어요 (+1점)</Text>
+                    <Text style={[styles.rateText, {color: '#28a745'}]}>좋았어요 (+3점)</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={[styles.rateButton, {backgroundColor: '#ffebee'}]} onPress={() => handleReview(false)}>
                     <Ionicons name="sad" size={40} color="#ff3b30" />
-                    <Text style={[styles.rateText, {color: '#ff3b30'}]}>별로예요 (-2점)</Text>
+                    <Text style={[styles.rateText, {color: '#ff3b30'}]}>별로예요 (-15점)</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity onPress={onClose} style={{marginTop: 15}}>
@@ -123,7 +146,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: 'bold', color: '#333' },
   content: { width: '100%', alignItems: 'center' },
   desc: { fontSize: 16, textAlign: 'center', marginBottom: 5, lineHeight: 24 },
-  subDesc: { fontSize: 14, color: '#666', marginBottom: 20 },
+  subDesc: { fontSize: 14, color: '#666', marginBottom: 20, textAlign: 'center' },
   rateButton: { flexDirection: 'row', alignItems: 'center', width: '100%', padding: 15, borderRadius: 12, marginBottom: 10, justifyContent: 'center' },
   rateText: { fontSize: 18, fontWeight: 'bold', marginLeft: 10 },
 });

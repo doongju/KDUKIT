@@ -30,12 +30,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
-<<<<<<< HEAD
-=======
+
 // ✨ [추가] 재인증 모달 임포트 (경로 확인해주세요)
 import PasswordConfirmModal from '../../components/PasswordConfirmModal';
 
->>>>>>> ae7b02c20c5d2969eb93c68227d0ecf55c08a2ef
+
 interface UserProfile {
   name: string;
   department: string;
@@ -58,14 +57,11 @@ export default function ProfileScreen() {
   const [loadingBlocked, setLoadingBlocked] = useState(false);
   const [showBlockedSection, setShowBlockedSection] = useState(false); 
   
-<<<<<<< HEAD
-  // 탈퇴 진행 중 로딩 상태
-  const [isDeleting, setIsDeleting] = useState(false);
-=======
+
   // 로딩 상태 및 모달 상태
   const [isDeleting, setIsDeleting] = useState(false);
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
->>>>>>> ae7b02c20c5d2969eb93c68227d0ecf55c08a2ef
+
 
   const router = useRouter();
   const auth = getAuth();
@@ -159,9 +155,7 @@ export default function ProfileScreen() {
     }
   };
 
-<<<<<<< HEAD
-  // ✅ [핵심 기능] 게시물 일괄 삭제 및 회원 탈퇴
-=======
+
   // ✅ [핵심] 실제 삭제 로직을 분리 (재사용을 위해)
   const performDelete = async () => {
     if (!user) return;
@@ -214,7 +208,7 @@ export default function ProfileScreen() {
   };
 
   // 회원 탈퇴 버튼 클릭 시
->>>>>>> ae7b02c20c5d2969eb93c68227d0ecf55c08a2ef
+
   const handleDeleteAccount = () => {
     Alert.alert(
       "회원 탈퇴", 
@@ -224,7 +218,6 @@ export default function ProfileScreen() {
         { 
           text: "예 (모두 삭제)", 
           style: 'destructive', 
-<<<<<<< HEAD
           onPress: async () => {
             if(!user) return;
             setIsDeleting(true); // 로딩 시작
@@ -281,10 +274,6 @@ export default function ProfileScreen() {
                 }
             }
         }}
-=======
-          onPress: performDelete // 분리된 함수 호출
-        }
->>>>>>> ae7b02c20c5d2969eb93c68227d0ecf55c08a2ef
     ]);
   };
 
@@ -307,10 +296,8 @@ export default function ProfileScreen() {
 
   const { color, icon, label, bg, score, barWidth } = scoreInfo;
 
-<<<<<<< HEAD
-  // ✨ 탈퇴 처리 중일 때 전체 로딩 화면 표시
-=======
->>>>>>> ae7b02c20c5d2969eb93c68227d0ecf55c08a2ef
+
+
   if (isDeleting) {
     return (
         <View style={styles.center}>

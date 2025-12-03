@@ -200,7 +200,7 @@ exports.sendTrustScoreNotification = functions.firestore
 
         if (diff >= 4) {
             title = "패널티 안내 🚨";
-            body = `약속 불이행(노쇼)으로 ${diff}점이 차감되었습니다.`;
+            body = `${diff}점이 차감되었습니다.`;
         }
 
         messagesToSend.push({
@@ -221,7 +221,7 @@ exports.sendTrustScoreNotification = functions.firestore
         messagesToSend.push({
           to: after.pushToken,
           title: "신뢰도가 상승했습니다! 🎉",
-          body: `택시 파티 참여로 ${diff}점을 얻어 ${after.trustScore}점이 되었습니다.`,
+          body: `신뢰 점수가 ${diff}점을 얻어 ${after.trustScore}점이 되었습니다.`,
           data: { url: "/profile" },
           _displayInForeground: true,
         });
