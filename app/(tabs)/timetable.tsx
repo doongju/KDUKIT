@@ -50,7 +50,6 @@ const generateTimeOptions = () => {
 
   for (let h = startHour; h < endHour; h++) {
     options.push({ label: `${String(h).padStart(2, '0')}:00`, value: h });
-    options.push({ label: `${String(h).padStart(2, '0')}:30`, value: h + 0.5 });
   }
   options.push({ label: `${endHour}:00`, value: endHour });
   
@@ -671,7 +670,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   
-  sectionLabel: { fontSize: 13, color: '#888', fontWeight: '600', marginBottom: 8, marginTop: 5 },
+  sectionLabel: { fontSize: 13, color: '#000', fontWeight: '600', marginBottom: 8, marginTop: 5 },
 
   formActionRow: { flexDirection: 'row', marginTop: 24, gap: 10 },
   actionButton: { 

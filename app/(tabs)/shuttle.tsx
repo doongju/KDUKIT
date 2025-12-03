@@ -336,7 +336,7 @@ const ShuttleScreen = () => {
           if (myCancelCount >= 3) {
             await updateDoc(userRef, {
                 cancelCount: increment(1),
-                trustScore: increment(-10) 
+                trustScore: increment(-15) 
             });
             Alert.alert('신뢰도 차감', '반복된 취소로 신뢰도가 차감되었습니다.');
           } else {

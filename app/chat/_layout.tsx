@@ -1,29 +1,35 @@
 // app/chat/_layout.tsx
 
 import { Stack } from 'expo-router';
-import React from 'react';
+import { Platform } from 'react-native';
 
 export default function ChatLayout() {
-    return (
-        <Stack
-            screenOptions={{
-                headerShown: true, // ⚠️ 여기서만 헤더를 보이도록 설정
-                headerStyle: {
-                    backgroundColor: '#0062ffff',
-                },
-                headerTintColor: '#fff',
-                headerTitleStyle: {
-                    fontWeight: 'bold',
-                },
-                animation: 'slide_from_right', 
-            }}
-        >
-            <Stack.Screen 
-                name="[id]" 
-                // ⚠️ 이곳의 `title`은 임시로 '채팅방'으로 유지합니다.
-                // 실제 상대방 이름은 `app/chat/[id].tsx`에서 동적으로 설정할 것입니다.
-                options={{ title: '채팅방' }}
-            />
-        </Stack>
-    );
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        // ✨ [스타일 변경] 흰색 배경에 검정 글씨 (깔끔한 스타일)
+        headerStyle: {
+          backgroundColor: '#fff',
+        },
+        headerTintColor: '#000', // 뒤로가기 화살표 및 제목 색상
+        headerTitleStyle: {
+          fontWeight: 'bold',
+          color: '#000',
+          fontSize: 18,
+        },
+        headerShadowVisible: false, // 헤더 하단 그림자 제거 (깔끔하게)
+        contentStyle: {
+            borderTopWidth: 1,
+            borderTopColor: '#f0f0f0' // 헤더와 본문 사이 옅은 경계선
+        },
+        animation: Platform.OS === 'ios' ? 'default' : 'fade_from_bottom',
+      }}
+    >
+      <Stack.Screen
+        name="[id]"
+        options={{ title: '채팅' }} // 초기 제목
+      />
+    </Stack>
+  );
 }

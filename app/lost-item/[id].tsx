@@ -83,7 +83,7 @@ export default function LostItemDetailScreen() {
             if (id) {
               await deleteDoc(doc(db, "lostAndFoundItems", id as string));
               Alert.alert("삭제 완료", "게시물이 삭제되었습니다.");
-              router.back();
+              router.replace('/(tabs)/lost-and-found');
             }
           } catch (error) { Alert.alert("오류", "삭제 중 문제가 발생했습니다."); }
       }}
@@ -99,7 +99,7 @@ export default function LostItemDetailScreen() {
     try {
       const chatRoomRef = doc(db, "chatRooms", chatRoomId);
       await setDoc(chatRoomRef, {
-        type: 'private',
+        type: 'lost-item',
         partyId: null,
         name: `${item.itemName}`,
         members: [user.uid, item.creatorId],

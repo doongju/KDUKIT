@@ -15,9 +15,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
-import UserProfileModal from '../../components/UserProfileModal';
-// ✨ 모달 컴포넌트 Import
 import TaxiFinishModal from '../../components/TaxiFinishModal';
+import UserProfileModal from '../../components/UserProfileModal';
 
 interface TaxiParty {
   id: string;
@@ -122,7 +121,6 @@ const PartyItem = memo(({ item, user, onPressProfile, onJoin, onChat, onFinish, 
         <View style={styles.actionContainer}>
           {isCreator ? (
              <View style={styles.creatorButtons}>
-               {/* ✨ onFinish 함수 호출 (모달 띄우기) */}
                <TouchableOpacity style={styles.finishBtn} onPress={() => onFinish(item)}>
                    <Text style={styles.btnText}>운행 완료</Text>
                </TouchableOpacity>
@@ -159,8 +157,6 @@ export default function TaxiPartyScreen() {
   const [parties, setParties] = useState<TaxiParty[]>([]);
   const [loading, setLoading] = useState(true);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
-  
-  // ✨ 모달 상태 추가
   const [finishParty, setFinishParty] = useState<TaxiParty | null>(null); 
 
   useEffect(() => {
@@ -190,7 +186,6 @@ export default function TaxiPartyScreen() {
     ]);
   };
 
-  // ✨ [변경] Alert 대신 모달 상태 변경
   const handleFinishParty = (party: TaxiParty) => {
     setFinishParty(party);
   };
@@ -246,7 +241,7 @@ export default function TaxiPartyScreen() {
         onPressProfile={setProfileUserId}
         onJoin={handleJoinParty}
         onChat={navigateToPartyChat}
-        onFinish={handleFinishParty} // ✨ 변경된 함수 연결
+        onFinish={handleFinishParty}
         onDelete={handleDeleteParty}
       />
   ), [user]);
@@ -281,12 +276,10 @@ export default function TaxiPartyScreen() {
         onClose={() => setProfileUserId(null)}
       />
 
-      {/* ✨ 모달 컴포넌트 연결 */}
       {finishParty && (
         <TaxiFinishModal
             visible={!!finishParty}
             partyId={finishParty.id}
-            // 참여자 목록 중 본인(방장)은 제외하고 전달
             members={finishParty.currentMembers.filter(uid => uid !== user?.uid)}
             onClose={() => setFinishParty(null)}
             onComplete={() => setFinishParty(null)}
@@ -301,12 +294,22 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, marginBottom: 5 },
   headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#0062ffff' },
   subHeader: { fontSize: 16, color: '#777', marginBottom: 15 },
-  createPartyButton: { backgroundColor: '#0062ffff', paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8, alignSelf: 'flex-end', marginRight: 20, marginBottom: 10 },
+  
+  createPartyButton: { 
+    backgroundColor: '#0062ffff', 
+    paddingVertical: 10, 
+    paddingHorizontal: 15, 
+    borderRadius: 8, 
+    alignSelf: 'flex-end', 
+    marginRight: 20, 
+    marginBottom: 10 
+  },
   createPartyButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  listContentContainer: { paddingHorizontal: 20, paddingBottom: 20 },
+  
+  listContentContainer: { paddingHorizontal: 20, paddingBottom: 100 },
   emptyText: { textAlign: 'center', marginTop: 50, color: '#999' },
   
-  // --- Card Styles (원래 디자인 유지) ---
+  // --- Card Styles ---
   card: { 
     backgroundColor: '#fff', 
     borderRadius: 12, 

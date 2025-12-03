@@ -1,3 +1,5 @@
+// app/_layout.tsx
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // ✨ [추가] 알림 라이브러리 (에러 방지를 위해 * as 사용)
 import * as Notifications from 'expo-notifications';
@@ -7,6 +9,8 @@ import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 // ✨ [수정] React Hook 에러 방지를 위한 import
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+// ✨ [필수] 키보드 컨트롤러 라이브러리 import
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { auth } from '../firebaseConfig';
 
@@ -31,13 +35,20 @@ export default function RootLayout() {
   const segments = useSegments();
   const navigationState = useRootNavigationState();
   
+<<<<<<< HEAD
   // 친구 코드: 앱 실행 감지 변수
+=======
+>>>>>>> ae7b02c20c5d2969eb93c68227d0ecf55c08a2ef
   const isFirstCheck = useRef(true);
   
   // ✨ [추가] 알림 리스너 변수 (any 타입 + null 초기화로 에러 방지)
   const responseListener = useRef<any>(null);
 
+<<<<<<< HEAD
   // 1. Firebase 인증 상태 감지 (친구 코드 100% 유지)
+=======
+  // 1. Firebase 인증 상태 감지 (기존 로직 유지)
+>>>>>>> ae7b02c20c5d2969eb93c68227d0ecf55c08a2ef
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (isFirstCheck.current) {
@@ -58,7 +69,11 @@ export default function RootLayout() {
         } else {
           setUser(null);
         }
+<<<<<<< HEAD
         setInitializing(false); 
+=======
+        setInitializing(false);
+>>>>>>> ae7b02c20c5d2969eb93c68227d0ecf55c08a2ef
       } else {
         setUser(currentUser);
       }
@@ -66,7 +81,11 @@ export default function RootLayout() {
     return () => unsubscribe();
   }, []);
 
+<<<<<<< HEAD
   // 2. 네비게이션 가드 (친구 코드 유지 + 안전장치)
+=======
+  // 2. 네비게이션 가드 (기존 로직 유지)
+>>>>>>> ae7b02c20c5d2969eb93c68227d0ecf55c08a2ef
   useEffect(() => {
     if (initializing || !navigationState?.key) return;
     
@@ -76,12 +95,14 @@ export default function RootLayout() {
     const rootSegment = segments[0];
     
     if (user) {
+<<<<<<< HEAD
       // 로그인 됨 -> 메인으로 이동
+=======
+>>>>>>> ae7b02c20c5d2969eb93c68227d0ecf55c08a2ef
       if (rootSegment === '(auth)' || !rootSegment) {
         router.replace('/(tabs)/explore');
       }
     } else {
-      // 로그인 안됨 -> 로그인 화면으로 이동
       if (rootSegment === '(tabs)' || rootSegment === 'chat' || rootSegment === 'profile') {
         router.replace('/(auth)/login');
       }
@@ -119,6 +140,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
+<<<<<<< HEAD
       <StatusBar style={user ? "dark" : "light"} />
       <Stack screenOptions={{ headerShown: false }}>
         {/* 친구들 설정 유지 + 필요한 화면 추가 */}
@@ -132,6 +154,20 @@ export default function RootLayout() {
         <Stack.Screen name="profile" />
         <Stack.Screen name="+not-found" />
       </Stack>
+=======
+      {/* ✨ [핵심 수정] 앱 전체를 KeyboardProvider로 감싸줍니다. 
+          statusBarTranslucent: 안드로이드에서 투명 상태바 대응을 위해 켜줍니다.
+      */}
+      <KeyboardProvider statusBarTranslucent>
+        <StatusBar style={user ? "dark" : "light"} />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" /> 
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="chat" />
+        </Stack>
+      </KeyboardProvider>
+>>>>>>> ae7b02c20c5d2969eb93c68227d0ecf55c08a2ef
     </SafeAreaProvider>
   );
 }
