@@ -464,7 +464,7 @@ const styles = StyleSheet.create({
 
   fab: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 100 : 24,
+    bottom: Platform.OS === 'ios' ? 100 : 90,
     right: 20,
     width: 60,
     height: 60,

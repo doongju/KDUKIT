@@ -245,7 +245,7 @@ export default function MarketListScreen() {
            </View>
         ) : (
            <>
-            <Text style={styles.headerTitle}>중고장터 🛒</Text>
+            <Text style={styles.headerTitle}>중고장터</Text>
             <TouchableOpacity onPress={() => setIsSearching(true)} style={styles.iconButton}>
                 <Ionicons name="search" size={24} color="#333" />
             </TouchableOpacity>
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingBottom: 15, backgroundColor: '#fff',
     borderBottomWidth: 1, borderBottomColor: '#f1f3f5'
   },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#333' },
+  headerTitle: { fontSize: 24, fontWeight: '800', color: '#333' },
   iconButton: { padding: 5 },
   searchBar: { 
     flex: 1, flexDirection: 'row', alignItems: 'center', 

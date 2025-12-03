@@ -193,7 +193,7 @@ export default function LostAndFoundScreen() {
                   </View>
               ) : (
                   <View style={styles.headerContent}>
-                      <Text style={styles.headerTitle}>분실물 센터 🔎</Text>
+                      <Text style={styles.headerTitle}>분실물 센터</Text>
                       <TouchableOpacity 
                           onPress={() => setIsSearching(true)} 
                           style={styles.iconButton}

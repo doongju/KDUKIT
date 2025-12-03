@@ -66,7 +66,7 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => (
             <View
               style={{
-                top: Platform.OS === 'ios' ? -10 : -15, // 위로 띄우기
+                top: Platform.OS === 'ios' ? -20 : -25, // 위로 띄우기
                 width: 66,
                 height: 66,
                 borderRadius: 33,
@@ -109,9 +109,7 @@ export default function TabLayout() {
         }}
       />
 
-      {/* ★★★ 나머지 파일 숨기기 (href: null) ★★★ 
-        스크린샷에 있는 파일명들을 정확히 기재했습니다.
-      */}
+      {/* ★★★ 나머지 파일 숨기기 (href: null) ★★★ */}
       <Tabs.Screen name="clublist" options={{ href: null }} />
       <Tabs.Screen name="create-club" options={{ href: null }} />
       <Tabs.Screen name="create-lost-item" options={{ href: null }} />
