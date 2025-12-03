@@ -2,16 +2,16 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { collection, doc, getDoc, getDocs, increment, query, updateDoc, where } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Modal,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Modal,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { db } from '../firebaseConfig';
 
@@ -108,7 +108,7 @@ export default function ReviewModal({ visible, postId, postTitle, sellerId, onCl
 
         if (buyerSnap.exists()) {
             const userData = buyerSnap.data();
-            const scoreDelta = isGood ? 1 : -2;
+            const scoreDelta = isGood ? 3 : -15;
 
             // ✨ 핵심: 점수가 없으면 50점 기준, 있으면 기존 점수에 increment
             if (userData.trustScore === undefined) {
@@ -176,12 +176,12 @@ export default function ReviewModal({ visible, postId, postTitle, sellerId, onCl
                   
                   <TouchableOpacity style={[styles.rateButton, {backgroundColor: '#e8f5e9'}]} onPress={() => handleReview(true)}>
                     <Ionicons name="happy" size={40} color="#28a745" />
-                    <Text style={[styles.rateText, {color: '#28a745'}]}>좋았어요 (+1점)</Text>
+                    <Text style={[styles.rateText, {color: '#28a745'}]}>좋았어요 (+3점)</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity style={[styles.rateButton, {backgroundColor: '#ffebee'}]} onPress={() => handleReview(false)}>
                     <Ionicons name="sad" size={40} color="#ff3b30" />
-                    <Text style={[styles.rateText, {color: '#ff3b30'}]}>별로예요 (-2점)</Text>
+                    <Text style={[styles.rateText, {color: '#ff3b30'}]}>별로예요 (-15점)</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity onPress={() => setStep('selectBuyer')} style={{marginTop: 20}}>

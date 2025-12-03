@@ -616,7 +616,7 @@ const styles = StyleSheet.create({
   sellerInfo: { flexDirection: 'row', alignItems: 'center' },
   sellerText: { fontSize: 12, color: '#888', marginLeft: 4 },
   fab: { 
-    position: 'absolute', bottom: Platform.OS === 'ios' ? 90 : 30, right: 20, 
+    position: 'absolute', bottom: Platform.OS === 'ios' ? 90 : 90, right: 20, 
     backgroundColor: '#0062ffff', borderRadius: 30, 
     flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, 
     elevation: 5, shadowColor: '#0062ffff', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 

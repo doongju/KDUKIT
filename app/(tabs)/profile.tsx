@@ -3,7 +3,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { deleteUser, getAuth, signOut } from 'firebase/auth';
-import { arrayRemove, deleteDoc, doc, getDoc as getDocLite, onSnapshot, updateDoc } from 'firebase/firestore';
+import {
+    arrayRemove,
+    collection,
+    deleteDoc,
+    doc,
+    getDoc as getDocLite,
+    getDocs,
+    onSnapshot,
+    query,
+    updateDoc,
+    where,
+    writeBatch
+} from 'firebase/firestore';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
@@ -18,7 +30,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
-// ... (인터페이스 정의 동일)
 interface UserProfile {
   name: string;
   department: string;
@@ -40,13 +51,15 @@ export default function ProfileScreen() {
   const [blockedList, setBlockedList] = useState<BlockedUserInfo[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
   const [showBlockedSection, setShowBlockedSection] = useState(false); 
+  
+  // 탈퇴 진행 중 로딩 상태
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const router = useRouter();
   const auth = getAuth();
   const user = auth.currentUser;
   const insets = useSafeAreaInsets();
 
-  // ✨ [수정 1] useEffect를 조건문(return)보다 위로 올리고, 내부에서 user 체크를 합니다.
   useEffect(() => {
     if (!user) {
         setLoading(false);
@@ -71,14 +84,12 @@ export default function ProfileScreen() {
         setLoading(false);
     }, (error) => {
         if (error.code === 'permission-denied') return;
-        console.error("Profile listener error:", error);
         setLoading(false);
     });
 
     return () => unsubscribeProfile();
   }, [user]);
 
-  // ✨ [수정 2] useCallback도 위로 올리고, catch문의 'e' 경고 해결
   const fetchBlockedUsers = useCallback(async (blockedIds: string[]) => {
     if (!blockedIds || blockedIds.length === 0) { setBlockedList([]); return; }
     setLoadingBlocked(true);
@@ -99,7 +110,7 @@ export default function ProfileScreen() {
                     }
                     return { uid, displayName: name };
                 }
-            } catch { return null; } // 'e' 제거하여 경고 해결
+            } catch { return null; }
             return null;
         });
         const results = await Promise.all(promises);
@@ -136,26 +147,75 @@ export default function ProfileScreen() {
     }
   };
 
+  // ✅ [핵심 기능] 게시물 일괄 삭제 및 회원 탈퇴
   const handleDeleteAccount = () => {
-    Alert.alert("회원 탈퇴", "정말로 탈퇴하시겠습니까?", [
-        { text: "취소", style: "cancel" },
-        { text: "탈퇴", style: 'destructive', onPress: async () => {
+    Alert.alert(
+      "회원 탈퇴", 
+      "정말 탈퇴하시겠습니까?\n작성하신 모든 게시물(장터, 동아리, 택시 등)이 영구 삭제되며 복구할 수 없습니다.", 
+      [
+        { text: "아니요", style: "cancel" },
+        { 
+          text: "예 (모두 삭제)", 
+          style: 'destructive', 
+          onPress: async () => {
             if(!user) return;
+            setIsDeleting(true); // 로딩 시작
+
             try {
-                await deleteDoc(doc(db, "users", user.uid));
+                // 1. 일괄 삭제를 위한 배치 생성
+                // (Firestore 배치는 한 번에 최대 500개까지 가능합니다. 게시글이 아주 많지 않다고 가정)
+                const batch = writeBatch(db);
+                
+                // 삭제할 컬렉션 및 필드 정의
+                const collectionsToDelete = [
+                    { name: 'marketPosts', field: 'creatorId' },
+                    { name: 'clubPosts', field: 'creatorId' },
+                    { name: 'taxiParties', field: 'creatorId' },
+                    { name: 'lostAndFoundItems', field: 'creatorId' },
+                    { name: 'timetables', field: 'userId' }, // 시간표는 userId 필드 사용
+                ];
+
+                let deleteCount = 0;
+
+                // 각 컬렉션을 돌면서 내가 쓴 글 찾기
+                for (const col of collectionsToDelete) {
+                    const q = query(collection(db, col.name), where(col.field, '==', user.uid));
+                    const snapshot = await getDocs(q);
+                    
+                    snapshot.forEach((doc) => {
+                        batch.delete(doc.ref);
+                        deleteCount++;
+                    });
+                }
+
+                // 2. 찾아낸 게시물들이 있다면 일괄 삭제 실행
+                if (deleteCount > 0) {
+                    console.log(`${deleteCount}개의 게시물 삭제 중...`);
+                    await batch.commit();
+                }
+
+                // 3. 내 정보(users) 삭제
+                try {
+                  await deleteDoc(doc(db, "users", user.uid));
+                } catch (e) { console.log("유저 정보 삭제 패스"); }
+                
+                // 4. 계정 영구 삭제 (최종)
                 await deleteUser(user);
-                Alert.alert("탈퇴 완료");
+                
             } catch(e: any) {
+                setIsDeleting(false); // 에러 시 로딩 끔
                 if (e.code === 'auth/requires-recent-login') {
-                    Alert.alert("인증 만료", "재로그인 후 시도해주세요.");
+                    Alert.alert("인증 만료", "안전한 탈퇴를 위해 로그아웃 후 다시 로그인해서 시도해주세요.");
                     await signOut(auth);
+                } else {
+                    console.error(e);
+                    Alert.alert("오류", "탈퇴 처리 중 문제가 발생했습니다.");
                 }
             }
         }}
     ]);
   };
 
-  // ✨ [수정 3] useCallback 위치 이동 (조건부 렌더링 전)
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     if (showBlockedSection && userProfile?.blockedUsers) {
@@ -163,7 +223,6 @@ export default function ProfileScreen() {
     } else { setTimeout(() => setRefreshing(false), 800); }
   }, [showBlockedSection, userProfile, fetchBlockedUsers]);
 
-  // ✨ [수정 4] useMemo 위치 이동 (조건부 렌더링 전)
   const scoreInfo = useMemo(() => {
     const score = userProfile?.trustScore ?? 50;
     let info = { color: '#ff3b30', icon: 'warning', label: '주의 요망 😱', bg: '#ffebee' };
@@ -176,7 +235,18 @@ export default function ProfileScreen() {
 
   const { color, icon, label, bg, score, barWidth } = scoreInfo;
 
-  // ✨ [수정 5] "Early Return" (조건부 렌더링)을 모든 Hook 선언 "이후"로 이동
+  // ✨ 탈퇴 처리 중일 때 전체 로딩 화면 표시
+  if (isDeleting) {
+    return (
+        <View style={styles.center}>
+            <ActivityIndicator size="large" color="#ff4444" />
+            <Text style={{marginTop: 10, color: '#666', fontWeight:'600'}}>
+                모든 데이터를 삭제하고 탈퇴 중입니다...
+            </Text>
+        </View>
+    );
+  }
+
   if (!user) {
     return (
         <View style={styles.center}>
@@ -207,6 +277,13 @@ export default function ProfileScreen() {
                 <Ionicons name="alert-circle-outline" size={50} color="#ff5c5c" />
                 <Text style={styles.errorText}>사용자 정보를 불러올 수 없습니다.</Text>
                 <Text style={styles.errorSubText}>회원가입이 정상적으로 되지 않았거나{'\n'}데이터가 삭제된 계정입니다.</Text>
+                
+                <TouchableOpacity 
+                    style={styles.forceDeleteButton} 
+                    onPress={handleDeleteAccount}
+                >
+                    <Text style={styles.forceDeleteText}>회원 탈퇴 마무리하기 (계정 삭제)</Text>
+                </TouchableOpacity>
             </View>
         ) : (
             <>
@@ -299,10 +376,22 @@ const styles = StyleSheet.create({
   logoutButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ff5c5c', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 },
   logoutText: { color: '#fff', fontWeight: 'bold', fontSize: 13, marginLeft: 4 },
   
-  // 에러 카드 스타일
   errorCard: { margin: 20, padding: 30, backgroundColor: '#fff', borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   errorText: { fontSize: 18, fontWeight: 'bold', color: '#333', marginTop: 10 },
   errorSubText: { fontSize: 14, color: '#666', textAlign: 'center', marginTop: 5 },
+  
+  forceDeleteButton: {
+    marginTop: 20,
+    backgroundColor: '#333',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+  },
+  forceDeleteText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
 
   profileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', margin: 20, marginTop: 10, padding: 20, borderRadius: 15, elevation: 3 },
   avatarContainer: { marginRight: 20 },

@@ -194,8 +194,8 @@ const ShuttleScreen = () => {
   // 테스트 데이터
   const getTestSchedules = (): ScheduleItem[] => {
     return [
-      { time: '02:05', note: 'TEST (곧 도착)' },
-      { time: '02:08', note: 'TEST (다음 차)' },
+      { time: '23:05', note: 'TEST (곧 도착)' },
+      { time: '23:10', note: 'TEST (다음 차)' },
     ];
   };
 

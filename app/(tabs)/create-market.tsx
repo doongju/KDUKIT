@@ -206,7 +206,7 @@ export default function CreateMarketScreen() {
 
     } catch (error: any) {
       if (error.code === 'permission-denied' || error.message.includes('permission-denied')) {
-        Alert.alert("이용 제한 🚫", "신고 누적(5회 이상)으로 인해 게시글 작성이 제한되었습니다.\n관리자에게 문의해주세요.");
+        Alert.alert("이용 제한 🚫", "신고 누적(3회 이상)으로 인해 게시글 작성이 제한되었습니다.\n관리자에게 문의해주세요.");
       } else {
         console.error("Save error:", error);
         Alert.alert("실패", "저장 중 오류가 발생했습니다.");

@@ -1,12 +1,12 @@
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import {
-    AndroidImportance,
-    getExpoPushTokenAsync,
-    getPermissionsAsync,
-    requestPermissionsAsync,
-    setNotificationChannelAsync,
-    setNotificationHandler,
+  AndroidImportance,
+  getExpoPushTokenAsync,
+  getPermissionsAsync,
+  requestPermissionsAsync,
+  setNotificationChannelAsync,
+  setNotificationHandler,
 } from 'expo-notifications';
 import { Platform } from 'react-native';
 

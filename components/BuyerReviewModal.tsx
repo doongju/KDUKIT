@@ -2,15 +2,15 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, increment, updateDoc } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Modal,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { db } from '../firebaseConfig';
 
@@ -50,7 +50,7 @@ export default function BuyerReviewModal({ visible, postData, onClose }: BuyerRe
         
         if (sellerSnap.exists()) {
             const userData = sellerSnap.data();
-            const scoreDelta = isGood ? 1 : -2;
+            const scoreDelta = isGood ? 3 : -15;
 
             // ✨ 핵심: 점수가 없으면 50점 기준, 있으면 increment
             if (userData.trustScore === undefined) {

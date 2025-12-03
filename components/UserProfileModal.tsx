@@ -3,7 +3,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { getAuth } from 'firebase/auth';
 import { arrayRemove, arrayUnion, doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +22,7 @@ interface UserProfileModalProps {
   onClose: () => void;
 }
 
-// ✨ UserData 인터페이스에 nickname 추가
+// ✨ UserData 인터페이스
 interface UserData {
   department?: string; 
   email?: string;
@@ -31,7 +31,7 @@ interface UserData {
   reportCount?: number;
   blockedUsers?: string[]; 
   wishlist?: string[]; 
-  nickname?: string; // ✨ 닉네임 필드 추가
+  nickname?: string;
 }
 
 export default function UserProfileModal({ visible, userId, onClose }: UserProfileModalProps) {
@@ -44,11 +44,15 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
   const currentUserId = auth.currentUser?.uid;
 
   useEffect(() => {
-    if (!visible || !userId || !currentUserId) {
+    if (!visible || !userId) {
       setUserData(null);
       setMyBlockedUsers([]);
+      // 모달이 닫히거나 ID가 없으면 로딩 초기화
+      setLoading(true);
       return;
     }
+
+    if (!currentUserId) return;
 
     setLoading(true);
 
@@ -58,6 +62,7 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
       if (docSnap.exists()) {
         setUserData(docSnap.data() as UserData);
       } else {
+        // ✨ 데이터가 없으면 null (탈퇴한 사용자)
         setUserData(null);
       }
       setLoading(false);
@@ -100,12 +105,12 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
         await updateDoc(myDocRef, {
           blockedUsers: arrayRemove(userId)
         });
-        Alert.alert("차단 해제", `${displayName}님에 대한 차단이 해제되었습니다.`);
+        Alert.alert("차단 해제", "차단이 해제되었습니다.");
       } else {
         await updateDoc(myDocRef, {
           blockedUsers: arrayUnion(userId)
         });
-        Alert.alert("차단 완료", `${displayName}님을 차단했습니다.\n해당 유저의 게시글과 메시지는 더 이상 보이지 않습니다.`);
+        Alert.alert("차단 완료", "해당 유저를 차단했습니다.");
       }
     } catch (error) {
       console.error("Error toggling block status:", error);
@@ -130,22 +135,21 @@ export default function UserProfileModal({ visible, userId, onClose }: UserProfi
   const reportCount = userData?.reportCount ?? 0;
   const isWarningUser = reportCount >= 3; 
 
-  // ✨ [핵심 수정] 표시 이름 생성 로직: "이메일ID 앞 2글자님 학과 닉네임"
-let displayName = "알 수 없음";
+  // ✨ 표시 이름 생성 로직
+  let displayName = "알 수 없음";
 
-if (userData) {
-    let emailPrefix = "";
-    if (userData.email) {
-        const fullId = userData.email.split('@')[0];   // 전체 ID
-        emailPrefix = fullId.substring(0, 2);          // 앞 2글자만 사용
-    }
+  if (userData) {
+      let emailPrefix = "";
+      if (userData.email) {
+          const fullId = userData.email.split('@')[0];   
+          emailPrefix = fullId.substring(0, 2);          
+      }
 
-    const dept = userData.department || "학과 미정";
-    const nick = userData.nickname || (userData.name ? userData.name : "");
+      const dept = userData.department || "학과 미정";
+      const nick = userData.nickname || (userData.name ? userData.name : "");
 
-    // 최종 조합: "bl님 군사학과 개구리"
-    displayName = `${emailPrefix}님 ${dept} ${nick}`;
-}
+      displayName = `${emailPrefix} ${dept} ${nick}님`;
+  }
 
   const canBlock = userId && currentUserId && userId !== currentUserId;
   const isBlocked = canBlock && myBlockedUsers.includes(userId);
@@ -153,7 +157,7 @@ if (userData) {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
         <View style={styles.modalContainer}>
           
           <TouchableOpacity style={styles.closeIcon} onPress={onClose}>
@@ -162,13 +166,25 @@ if (userData) {
 
           {loading ? (
             <ActivityIndicator size="large" color="#0062ffff" style={{ marginVertical: 20 }} />
+          ) : !userData ? (
+            // ✅ [수정된 부분] 데이터가 없을 때 (탈퇴한 계정) 표시되는 화면
+            <View style={styles.deletedContainer}>
+                <Ionicons name="person-remove-outline" size={60} color="#bbb" />
+                <Text style={styles.deletedTitle}>알 수 없음</Text>
+                <View style={styles.deletedBadge}>
+                    <Text style={styles.deletedText}>탈퇴한 계정입니다</Text>
+                </View>
+                <Text style={styles.deletedDesc}>
+                    사용자가 탈퇴하여{'\n'}정보를 확인할 수 없습니다.
+                </Text>
+            </View>
           ) : (
+            // ✅ 데이터가 있을 때 (정상 계정) 표시되는 화면
             <>
               <View style={styles.avatarContainer}>
                 <Ionicons name="person-circle" size={80} color={isWarningUser ? "#ff3b30" : "#ccc"} />
               </View>
 
-              {/* ✨ 조합된 이름 표시 */}
               <Text style={styles.userName}>{displayName}</Text>
               
               <View style={styles.verifiedContainer}>
@@ -221,7 +237,7 @@ if (userData) {
             </>
           )}
         </View>
-      </View>
+      </TouchableOpacity>
 
       {reportVisible && (
         <ReportModal 
@@ -241,7 +257,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   modalContainer: {
-    width: '85%', // ✨ 폭을 살짝 넓혀서 긴 이름도 잘 보이게 함
+    width: '85%', 
     backgroundColor: '#fff', borderRadius: 20,
     padding: 20, alignItems: 'center', elevation: 5,
   },
@@ -253,8 +269,7 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 20, fontWeight: 'bold', color: '#333', marginBottom: 4, 
-    textAlign: 'center', // ✨ 긴 이름 중앙 정렬
-    paddingHorizontal: 5, 
+    textAlign: 'center', paddingHorizontal: 5, 
   },
   
   verifiedContainer: {
@@ -329,5 +344,22 @@ const styles = StyleSheet.create({
   },
   reportText: {
     fontSize: 13, color: '#ff3b30', textDecorationLine: 'underline',
+  },
+
+  // ✅ 탈퇴 계정 스타일 추가
+  deletedContainer: {
+    alignItems: 'center', paddingVertical: 20,
+  },
+  deletedTitle: {
+    fontSize: 18, fontWeight: 'bold', color: '#999', marginTop: 10, marginBottom: 10,
+  },
+  deletedBadge: {
+    backgroundColor: '#f5f5f5', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, marginBottom: 15,
+  },
+  deletedText: {
+    color: '#ff5c5c', fontWeight: 'bold', fontSize: 14,
+  },
+  deletedDesc: {
+    textAlign: 'center', color: '#bbb', fontSize: 13, lineHeight: 18,
   },
 });

@@ -1,13 +1,28 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+// ✨ [추가] 알림 라이브러리 (에러 방지를 위해 * as 사용)
+import * as Notifications from 'expo-notifications';
 import { Stack, useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+// ✨ [수정] React Hook 에러 방지를 위한 import
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { auth } from '../firebaseConfig';
 
 const STORAGE_KEY_AUTO_LOGIN = 'AUTO_LOGIN_ENABLED';
+
+// ✨ [추가] 알림 핸들러 (문법 에러 방지용 return 명시)
+// @ts-ignore
+Notifications.setNotificationHandler({
+  handleNotification: async () => {
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    };
+  },
+}as any);
 
 export default function RootLayout() {
   const [user, setUser] = useState<User | null>(null);
@@ -16,27 +31,24 @@ export default function RootLayout() {
   const segments = useSegments();
   const navigationState = useRootNavigationState();
   
-  // ✨ [핵심] 앱 실행 후 첫 번째 검사인지 확인하는 변수
+  // 친구 코드: 앱 실행 감지 변수
   const isFirstCheck = useRef(true);
+  
+  // ✨ [추가] 알림 리스너 변수 (any 타입 + null 초기화로 에러 방지)
+  const responseListener = useRef<any>(null);
 
-  // 1. Firebase 인증 상태 감지
+  // 1. Firebase 인증 상태 감지 (친구 코드 100% 유지)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      
       if (isFirstCheck.current) {
-        // 🟢 [앱 실행 시 최초 1회만 실행]
         isFirstCheck.current = false;
-
         if (currentUser) {
-          // 로그인 되어 있다면 '자동 로그인 설정'을 확인
           try {
             const autoLogin = await AsyncStorage.getItem(STORAGE_KEY_AUTO_LOGIN);
             if (autoLogin !== 'true') {
-              // 설정이 꺼져있으면 -> 과감하게 로그아웃 (앱 껐다 켰을 때 로그인 풀리게 함)
               await signOut(auth);
               setUser(null);
             } else {
-              // 설정이 켜져있으면 -> 로그인 유지
               setUser(currentUser);
             }
           } catch (e) {
@@ -46,27 +58,25 @@ export default function RootLayout() {
         } else {
           setUser(null);
         }
-        setInitializing(false); // 로딩 끝
-
+        setInitializing(false); 
       } else {
-        // 🟢 [앱 사용 중 로그인/로그아웃 발생 시]
-        // 설정 검사 없이 그냥 로그인 상태만 업데이트 (그래야 방금 로그인한 게 안 튕김)
         setUser(currentUser);
       }
     });
-
     return () => unsubscribe();
   }, []);
 
-  // 2. 네비게이션 가드 (납치 로직)
+  // 2. 네비게이션 가드 (친구 코드 유지 + 안전장치)
   useEffect(() => {
     if (initializing || !navigationState?.key) return;
+    
+    // ✨ segments가 준비되지 않았을 때 에러 방지
+    if (!segments || !Array.isArray(segments)) return;
 
-    const rootSegment = segments?.[0];
-
+    const rootSegment = segments[0];
+    
     if (user) {
       // 로그인 됨 -> 메인으로 이동
-      // ✨ [수정] 'index' 문자열 비교 제거 ( !rootSegment 가 이미 index 화면을 포함함)
       if (rootSegment === '(auth)' || !rootSegment) {
         router.replace('/(tabs)/explore');
       }
@@ -77,6 +87,27 @@ export default function RootLayout() {
       }
     }
   }, [user, initializing, segments, navigationState?.key]);
+
+  // ✨ [추가] 3. 알림 클릭 리스너 (우리가 만든 기능)
+  useEffect(() => {
+    // 사용자가 알림을 '클릭'했을 때 실행
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      // any로 변환하여 데이터 타입 에러 방지
+      const data = response.notification.request.content.data as any;
+      
+      if (data && data.url) {
+        console.log("👉 알림 클릭! 이동:", data.url);
+        router.push(data.url);
+      }
+    });
+
+    return () => {
+      // 리스너 제거 (최신 방식인 .remove() 사용 -> 에러 해결)
+      if (responseListener.current) {
+        responseListener.current.remove();
+      }
+    };
+  }, []);
 
   if (initializing) {
     return (
@@ -90,10 +121,16 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <StatusBar style={user ? "dark" : "light"} />
       <Stack screenOptions={{ headerShown: false }}>
+        {/* 친구들 설정 유지 + 필요한 화면 추가 */}
         <Stack.Screen name="index" /> 
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="chat" />
+        
+        {/* 👇 안전하게 추가해 둠 */}
+        <Stack.Screen name="lost-item" />
+        <Stack.Screen name="profile" />
+        <Stack.Screen name="+not-found" />
       </Stack>
     </SafeAreaProvider>
   );
