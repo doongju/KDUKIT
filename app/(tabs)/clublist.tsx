@@ -9,7 +9,6 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   FlatList,
   Platform,
   RefreshControl,
@@ -23,8 +22,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
-
-const SCREEN_WIDTH = Dimensions.get('window').width;
 
 interface ClubPost {
   id: string;

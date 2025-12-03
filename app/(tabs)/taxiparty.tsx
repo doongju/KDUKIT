@@ -1,3 +1,5 @@
+// app/(tabs)/taxiparty.tsx
+
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
@@ -7,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -15,7 +18,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
-import TaxiFinishModal from '../../components/TaxiFinishModal';
 import UserProfileModal from '../../components/UserProfileModal';
 
 interface TaxiParty {
@@ -157,7 +159,6 @@ export default function TaxiPartyScreen() {
   const [parties, setParties] = useState<TaxiParty[]>([]);
   const [loading, setLoading] = useState(true);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
-  const [finishParty, setFinishParty] = useState<TaxiParty | null>(null); 
 
   useEffect(() => {
     const q = query(collection(db, "taxiParties"), orderBy("createdAt", "desc"));
@@ -176,6 +177,7 @@ export default function TaxiPartyScreen() {
     router.push('/create-party');
   };
 
+  // 파티 삭제 (휴지통 버튼)
   const handleDeleteParty = (partyId: string, creatorId: string) => {
     if (!user || user.uid !== creatorId) return;
     Alert.alert("파티 삭제", "정말 삭제하시겠습니까?", [
@@ -186,8 +188,28 @@ export default function TaxiPartyScreen() {
     ]);
   };
 
+  // ✨ [수정] 운행 완료 처리 (팝업 대신 Alert 사용)
   const handleFinishParty = (party: TaxiParty) => {
-    setFinishParty(party);
+    Alert.alert(
+      "운행 완료",
+      "목적지에 도착하셨나요?\n운행 종료를 누르면 파티가 목록에서 삭제됩니다.",
+      [
+        { text: "취소", style: "cancel" },
+        { 
+          text: "운행 종료", 
+          style: "default",
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, "taxiParties", party.id));
+              Alert.alert("완료", "운행이 종료되었습니다.");
+            } catch (e) {
+              console.error(e);
+              Alert.alert("오류", "삭제 중 문제가 발생했습니다.");
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleJoinParty = async (party: TaxiParty) => {
@@ -241,34 +263,36 @@ export default function TaxiPartyScreen() {
         onPressProfile={setProfileUserId}
         onJoin={handleJoinParty}
         onChat={navigateToPartyChat}
-        onFinish={handleFinishParty}
+        onFinish={handleFinishParty} // ✨ 여기 함수 연결
         onDelete={handleDeleteParty}
       />
   ), [user]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>택시 파티</Text>
-        <Text style={styles.subHeader}>같이 택시를 탈 사람을 찾아보세요!</Text>
+    <View style={[styles.container]}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <Text style={styles.headerTitle}>택시파티 🚖</Text>
       </View>
       
-      <TouchableOpacity style={styles.createPartyButton} onPress={handleCreateParty}>
-        <Text style={styles.createPartyButtonText}>택시파티+</Text>
-      </TouchableOpacity>
-      
-      {loading ? <ActivityIndicator size="large" color="#0062ffff" /> : (
+      {loading ? <ActivityIndicator size="large" color="#0062ffff" style={{marginTop: 50}} /> : (
         <FlatList
           data={parties}
           renderItem={renderPartyItem}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.listContentContainer}
-          ListEmptyComponent={<Text style={styles.emptyText}>진행 중인 파티가 없습니다.</Text>}
-          initialNumToRender={5}
-          maxToRenderPerBatch={5}
-          windowSize={5}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+                <Ionicons name="car-sport-outline" size={60} color="#ddd" />
+                <Text style={styles.emptyText}>현재 모집 중인 파티가 없어요</Text>
+                <Text style={styles.emptySubText}>직접 파티를 만들어보세요!</Text>
+            </View>
+          }
         />
       )}
+
+      <TouchableOpacity style={styles.fab} onPress={handleCreateParty}>
+        <Ionicons name="add" size={32} color="white" />
+      </TouchableOpacity>
 
       <UserProfileModal 
         visible={!!profileUserId}
@@ -276,45 +300,37 @@ export default function TaxiPartyScreen() {
         onClose={() => setProfileUserId(null)}
       />
 
-      {finishParty && (
-        <TaxiFinishModal
-            visible={!!finishParty}
-            partyId={finishParty.id}
-            members={finishParty.currentMembers.filter(uid => uid !== user?.uid)}
-            onClose={() => setFinishParty(null)}
-            onComplete={() => setFinishParty(null)}
-        />
-      )}
+      {/* ✨ TaxiFinishModal 제거됨 */}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  header: { paddingHorizontal: 20, marginBottom: 5 },
-  headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#0062ffff' },
-  subHeader: { fontSize: 16, color: '#777', marginBottom: 15 },
-  
-  createPartyButton: { 
-    backgroundColor: '#0062ffff', 
-    paddingVertical: 10, 
-    paddingHorizontal: 15, 
-    borderRadius: 8, 
-    alignSelf: 'flex-end', 
-    marginRight: 20, 
-    marginBottom: 10 
+  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  header: { 
+    paddingHorizontal: 20, 
+    paddingBottom: 15, 
+    backgroundColor: '#fff', 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#eee',
+    zIndex: 10
   },
-  createPartyButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#333' },
   
-  listContentContainer: { paddingHorizontal: 20, paddingBottom: 100 },
-  emptyText: { textAlign: 'center', marginTop: 50, color: '#999' },
+  listContentContainer: { padding: 16, paddingBottom: 100 },
   
   // --- Card Styles ---
   card: { 
     backgroundColor: '#fff', 
-    borderRadius: 12, 
-    padding: 15, 
-    marginBottom: 15, 
+    borderRadius: 20, 
+    padding: 20, 
+    marginBottom: 16, 
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 4 }, 
+    shadowOpacity: 0.05, 
+    shadowRadius: 10,
     elevation: 2 
   },
   myCard: {
@@ -326,14 +342,13 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 15,
     height: 24,
   },
   myBadge: {
     backgroundColor: '#0062ffff',
     paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingVertical: 7,
     borderRadius: 6,
   },
   myBadgeText: {
@@ -345,15 +360,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-    justifyContent: 'center',
-    marginLeft: 'auto'
+    justifyContent: 'center'
   },
   statusText: {
     fontSize: 11,
     fontWeight: 'bold',
   },
 
-  // --- Main Info ---
+  // --- Main Info (Time & Route) ---
   mainInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -365,7 +379,7 @@ const styles = StyleSheet.create({
     minWidth: 80,
   },
   timeLabel: { fontSize: 11, color: '#888', marginBottom: 2 },
-  timeText: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  timeText: { fontSize: 24, fontWeight: '800', color: '#333' },
   
   dividerVertical: {
     width: 1,
@@ -377,7 +391,7 @@ const styles = StyleSheet.create({
   routeSection: { flex: 1 },
   routeRow: { flexDirection: 'row', alignItems: 'center' },
   dot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-  routeLineContainer: { paddingLeft: 3.5 },
+  routeLineContainer: { paddingLeft: 3.5 }, // dot의 가운데 정렬을 위해
   routeLine: { width: 1, height: 16, backgroundColor: '#eee', marginVertical: 2 },
   routeText: { fontSize: 15, color: '#555', flex: 1 },
   destText: { fontSize: 16, fontWeight: 'bold', color: '#333' },
@@ -403,23 +417,26 @@ const styles = StyleSheet.create({
   creatorButtons: { flexDirection: 'row', flex: 1, gap: 10 },
   finishBtn: { 
     flex: 1, 
-    backgroundColor: '#28a745', 
-    borderRadius: 8, 
-    paddingVertical: 12, 
-    alignItems: 'center'
+    backgroundColor: '#0062ffff', 
+    borderRadius: 12, 
+    paddingVertical: 14, 
+    alignItems: 'center',
+    shadowColor: '#0062ffff', shadowOffset: {width:0, height:2}, shadowOpacity:0.2, shadowRadius:4
   },
   deleteBtn: { 
     width: 50, 
-    backgroundColor: '#dc3545', 
-    borderRadius: 8, 
+    backgroundColor: '#fff', 
+    borderWidth: 1,
+    borderColor: '#ff4444',
+    borderRadius: 12, 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
   chatBtn: { 
     flex: 1,
-    backgroundColor: '#17a2b8', 
-    borderRadius: 8, 
-    paddingVertical: 12, 
+    backgroundColor: '#2ecc71', 
+    borderRadius: 12, 
+    paddingVertical: 14, 
     alignItems: 'center', 
     flexDirection: 'row', 
     justifyContent: 'center' 
@@ -427,15 +444,39 @@ const styles = StyleSheet.create({
   joinBtn: { 
     flex: 1,
     backgroundColor: '#0062ffff', 
-    borderRadius: 8, 
-    paddingVertical: 12, 
-    alignItems: 'center'
+    borderRadius: 12, 
+    paddingVertical: 14, 
+    alignItems: 'center',
+    shadowColor: '#0062ffff', shadowOffset: {width:0, height:2}, shadowOpacity:0.2, shadowRadius:4
   },
   disabledBtn: { 
-    backgroundColor: '#ccc',
+    backgroundColor: '#e0e0e0',
     shadowOpacity: 0 
   },
   
   btnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
   joinBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+
+  // --- Empty & FAB ---
+  emptyContainer: { alignItems: 'center', marginTop: 100 },
+  emptyText: { fontSize: 18, color: '#555', marginTop: 15, fontWeight: 'bold' },
+  emptySubText: { fontSize: 14, color: '#999', marginTop: 5 },
+
+  fab: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 100 : 24,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#0062ffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    zIndex: 999,
+  },
 });

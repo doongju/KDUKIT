@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import {
   arrayRemove,
@@ -126,7 +125,7 @@ const getBusCount = (route: RouteName, direction: Direction, time: string, day: 
 };
 
 const ShuttleScreen = () => {
-  const router = useRouter();
+  //const router = useRouter();
   const insets = useSafeAreaInsets();
   const auth = getAuth();
   const user = auth.currentUser;

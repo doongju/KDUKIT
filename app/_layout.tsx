@@ -38,11 +38,7 @@ export default function RootLayout() {
   // ✨ [추가] 알림 리스너 변수 (any 타입 + null 초기화로 에러 방지)
   const responseListener = useRef<any>(null);
 
-<<<<<<< HEAD
   // 1. Firebase 인증 상태 감지
-=======
-  // 1. Firebase 인증 상태 감지 (친구 코드 100% 유지)
->>>>>>> 92023f61e00b572c6b5e1f21588bcdca1a2865bf
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (isFirstCheck.current) {
@@ -73,13 +69,7 @@ export default function RootLayout() {
     return () => unsubscribe();
   }, []);
 
-<<<<<<< HEAD
   // 2. 네비게이션 가드
-=======
-
-  // 2. 네비게이션 가드 (친구 코드 유지 + 안전장치)
-
->>>>>>> 92023f61e00b572c6b5e1f21588bcdca1a2865bf
   useEffect(() => {
     if (initializing || !navigationState?.key) return;
     
@@ -133,13 +123,6 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-<<<<<<< HEAD
-=======
-
-      {/* ✨ [핵심 수정] 앱 전체를 KeyboardProvider로 감싸줍니다. 
-          statusBarTranslucent: 안드로이드에서 투명 상태바 대응을 위해 켜줍니다.
-      */}
->>>>>>> 92023f61e00b572c6b5e1f21588bcdca1a2865bf
       <KeyboardProvider statusBarTranslucent>
         <StatusBar style={user ? "dark" : "light"} />
         

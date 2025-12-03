@@ -26,6 +26,7 @@ const CONTENT_PADDING = 20;
 const IMAGE_WIDTH = SCREEN_WIDTH - (CONTENT_PADDING * 2); // 패딩을 뺀 실제 이미지 너비
 
 interface ItemDetail {
+  postType?: string;
   type: 'lost' | 'found';
   itemName: string;
   location: string;
@@ -122,7 +123,7 @@ export default function LostItemDetailScreen() {
   if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#0062ffff" /></View>;
   if (!item) return null;
 
-  const isLost = item.type === 'lost';
+  const isLost = item.postType === 'lost' || item.type === 'lost';
   const themeColor = isLost ? '#ff6b6b' : '#4d96ff';
   const isOwner = user?.uid === item.creatorId;
 
@@ -139,11 +140,6 @@ export default function LostItemDetailScreen() {
           <Ionicons name="arrow-back" size={28} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>상세 정보</Text>
-        {isOwner && (
-          <TouchableOpacity onPress={handleDelete} style={{ marginLeft: 'auto', padding: 10 }}>
-            <Ionicons name="trash-outline" size={24} color="#ff4444" />
-          </TouchableOpacity>
-        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
