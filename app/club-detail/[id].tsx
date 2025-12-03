@@ -99,7 +99,7 @@ export default function ClubDetailScreen() {
   const handleEditPost = () => {
     if (!post) return;
     router.push({
-      pathname: '/(tabs)/create-club',
+      pathname: '/create-club',
       params: {
         mode: 'edit',
         postId: post.id,
