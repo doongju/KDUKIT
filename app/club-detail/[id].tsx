@@ -47,6 +47,9 @@ export default function ClubDetailScreen() {
   // ✨ [핵심 1] 로딩 상태 true로 시작
   const [loading, setLoading] = useState(true);
   
+  // ✨ [핵심 2] 삭제 중인지 확인하는 상태 추가
+  const [isDeleting, setIsDeleting] = useState(false);
+  
   const [isImageViewerVisible, setIsImageViewerVisible] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
@@ -54,29 +57,41 @@ export default function ClubDetailScreen() {
     if (!id) return;
     const docRef = doc(db, 'clubPosts', id as string);
     
-    // ✨ [핵심 2] 데이터 가져오는 로직
+    // ✨ [핵심 3] 데이터 가져오는 로직
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      // 내가 삭제 중이라면 스냅샷 로직 무시
+      if (isDeleting) return;
+
       if (docSnap.exists()) {
         setPost({ id: docSnap.id, ...docSnap.data() } as ClubPost);
       } else {
+        // 내가 아닌 다른 이유로 삭제되었을 때만 알림
         Alert.alert("알림", "삭제된 게시글입니다.");
         router.back();
       }
-      // ✨ [핵심 3] 데이터 로드 완료되면 로딩 끄기
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [id]);
+  }, [id, isDeleting]); // 의존성 배열에 isDeleting 추가
 
-  // ... (삭제, 수정, 채팅 등의 핸들러 함수들은 기존과 동일) ...
   const handleDeletePost = async () => {
     Alert.alert("게시글 삭제", "정말 삭제하시겠습니까?", [
       { text: "취소", style: "cancel" },
       { text: "삭제", style: "destructive", onPress: async () => {
           try {
+            // ✨ [핵심 4] 삭제 플래그 켜기 (스냅샷 무시)
+            setIsDeleting(true);
+            
             await deleteDoc(doc(db, "clubPosts", id as string));
-            router.replace('/(tabs)/clublist');
-          } catch { Alert.alert("오류", "삭제 실패"); }
+            
+            // ✨ [핵심 5] 알림 없이 목록으로 바로 이동 (경로가 다르다면 수정해주세요)
+            router.back(); 
+            
+          } catch (error) { 
+            console.error(error);
+            setIsDeleting(false); // 실패 시 플래그 끄기
+            Alert.alert("오류", "삭제 실패"); 
+          }
       }}
     ]);
   };
@@ -160,7 +175,7 @@ export default function ClubDetailScreen() {
     setCurrentImageIndex(roundIndex);
   };
 
-  // ✨ [핵심 4] 로딩 중이거나 데이터가 없으면 로딩바(ActivityIndicator) 표시
+  // ✨ [핵심 6] 로딩 중이거나 데이터가 없으면 로딩바(ActivityIndicator) 표시
   if (loading || !post) {
     return (
         <View style={styles.loadingContainer}>
@@ -169,7 +184,6 @@ export default function ClubDetailScreen() {
     );
   }
 
-  // ... (이후 렌더링 로직은 기존과 동일) ...
   const isMyPost = currentUserId && post.creatorId === currentUserId;
   const isFull = post.currentMembers.length >= post.memberLimit;
   const isJoined = currentUserId ? post.currentMembers.includes(currentUserId) : false;
@@ -234,7 +248,7 @@ export default function ClubDetailScreen() {
                 </View>
             ) : (
                 <View style={[styles.imageContainer, {backgroundColor: '#f8f9fa', justifyContent:'center', alignItems:'center'}]}>
-                     <Ionicons name="image-outline" size={48} color="#ccc" />
+                      <Ionicons name="image-outline" size={48} color="#ccc" />
                 </View>
             )}
 
@@ -304,7 +318,6 @@ export default function ClubDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  // ✨ 로딩 화면 스타일 (화면 중앙 정렬)
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
   
   header: { 

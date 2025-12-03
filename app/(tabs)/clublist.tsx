@@ -152,7 +152,7 @@ export default function ClubListScreen() {
 
   const handleCreateClubPost = () => {
     if (!currentUser) return Alert.alert("로그인 필요", "로그인 후 작성할 수 있습니다.");
-    router.push({ pathname: '/(tabs)/create-club', params: { mode: 'new', t: Date.now().toString() } });
+    router.push({ pathname: '/create-club', params: { mode: 'new', t: Date.now().toString() } });
   };
 
   if (loading) return <View style={[styles.container, {justifyContent:'center', alignItems:'center'}]}><ActivityIndicator size="large" color="#0062ffff" /></View>;

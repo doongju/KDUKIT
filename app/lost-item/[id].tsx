@@ -75,6 +75,7 @@ export default function LostItemDetailScreen() {
     fetchItem();
   }, [id]);
 
+  // ✨ [수정] 삭제 성공 시 알림창 없이 바로 목록으로 이동
   const handleDelete = async () => {
     Alert.alert("게시물 삭제", "정말로 이 게시물을 삭제하시겠습니까?", [
       { text: "취소", style: "cancel" },
@@ -82,10 +83,11 @@ export default function LostItemDetailScreen() {
           try {
             if (id) {
               await deleteDoc(doc(db, "lostAndFoundItems", id as string));
-              Alert.alert("삭제 완료", "게시물이 삭제되었습니다.");
-              router.replace('/(tabs)/lost-and-found');
+              router.back();
             }
-          } catch (error) { Alert.alert("오류", "삭제 중 문제가 발생했습니다."); }
+          } catch (error) { 
+             Alert.alert("오류", "삭제 중 문제가 발생했습니다."); 
+          }
       }}
     ]);
   };

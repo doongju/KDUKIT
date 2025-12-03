@@ -15,7 +15,7 @@ import {
 } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, // ✨ 로딩바
+  ActivityIndicator,
   Alert,
   Dimensions,
   FlatList,
@@ -58,10 +58,11 @@ export default function MarketDetailScreen() {
   const currentUserId = currentUser?.uid;
 
   const [post, setPost] = useState<MarketPost | null>(null);
-  
-  // ✨ [핵심 1] 로딩 상태 시작
   const [loading, setLoading] = useState(true);
   
+  // ✨ [수정 1] 삭제 진행 중인지 확인하는 상태 추가
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const [isImageViewerVisible, setIsImageViewerVisible] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
@@ -73,18 +74,22 @@ export default function MarketDetailScreen() {
   useEffect(() => {
     if (!id) return;
     const docRef = doc(db, 'marketPosts', id as string);
+    
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      // ✨ [수정 2] 내가 삭제 중이라면 스냅샷 로직(알림 및 자동 뒤로가기) 무시
+      if (isDeleting) return;
+
       if (docSnap.exists()) {
         setPost({ id: docSnap.id, ...docSnap.data() } as MarketPost);
       } else {
+        // 내가 아닌 다른 이유로 삭제되었을 때만 작동
         Alert.alert("알림", "삭제된 게시글입니다.");
-        router.replace('/(tabs)/marketlist');
+        router.back();
       }
-      // ✨ [핵심 3] 로딩 종료
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [id, router]);
+  }, [id, router, isDeleting]); // 의존성 배열에 isDeleting 추가
 
   // 2. 위시리스트 로드
   useEffect(() => {
@@ -96,7 +101,6 @@ export default function MarketDetailScreen() {
     return () => unsubscribe();
   }, [currentUserId]);
 
-  // ... (핸들러 함수들은 기존 유지) ...
   const handleToggleWish = async () => {
     if (!currentUser || !post) return;
     const userRef = doc(db, 'users', currentUser.uid);
@@ -112,9 +116,18 @@ export default function MarketDetailScreen() {
       { text: "취소", style: "cancel" },
       { text: "삭제", style: "destructive", onPress: async () => {
           try {
+            // ✨ [수정 3] 삭제 플래그 켜기 (스냅샷 무시)
+            setIsDeleting(true);
+            
             await deleteDoc(doc(db, "marketPosts", id as string));
-            router.replace('/(tabs)/marketlist');
-          } catch { Alert.alert("오류", "삭제 실패"); }
+            
+            // ✨ [수정 4] 게시판 목록으로 이동 (뒤로가기 스택 꼬임 방지)
+            router.back();
+          } catch (error) { 
+            console.error(error);
+            setIsDeleting(false); // 실패 시 플래그 끄기
+            Alert.alert("오류", "삭제 실패"); 
+          }
       }}
     ]);
   };
@@ -192,7 +205,6 @@ export default function MarketDetailScreen() {
       setCurrentImageIndex(roundIndex);
   };
 
-  // ✨ [핵심 4] 로딩 중이거나 데이터가 없으면 로딩바(ActivityIndicator) 표시
   if (loading || !post) {
     return (
         <View style={styles.loadingContainer}>
@@ -201,7 +213,6 @@ export default function MarketDetailScreen() {
     );
   }
 
-  // ... (이후 렌더링 로직은 기존과 동일) ...
   const postImages = post.imageUrls && post.imageUrls.length > 0 
     ? post.imageUrls 
     : (post.imageUrl ? [post.imageUrl] : []);
@@ -260,7 +271,7 @@ export default function MarketDetailScreen() {
                 </View>
             ) : (
                 <View style={[styles.imageContainer, {backgroundColor: '#f8f9fa', justifyContent:'center', alignItems:'center'}]}>
-                     <Ionicons name="image-outline" size={48} color="#ccc" />
+                      <Ionicons name="image-outline" size={48} color="#ccc" />
                 </View>
             )}
 
@@ -352,7 +363,6 @@ export default function MarketDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  // ✨ 로딩 화면 스타일
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
   
   header: { 

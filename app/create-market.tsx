@@ -25,7 +25,7 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { db, storage } from '../../firebaseConfig';
+import { db, storage } from '../firebaseConfig';
 
 const CATEGORIES = ['전공도서', '교양도서', '전자제품', '의류/잡화', '생활용품', '기타'];
 const MAX_IMAGES = 8; 
@@ -178,8 +178,6 @@ export default function CreateMarketScreen() {
             imageUrls: validUrls,   
             status: '판매중',
             creatorId: currentUser.uid,
-            // ✨ [핵심 수정] 여기에 type: 'market'을 추가합니다.
-            // 나중에 채팅방을 만들 때 이 값을 참조하게 됩니다.
             type: 'market', 
             updatedAt: serverTimestamp(),
         };
@@ -188,7 +186,6 @@ export default function CreateMarketScreen() {
             const postRef = doc(db, 'marketPosts', params.postId as string);
             await updateDoc(postRef, {
                 ...postData,
-                // 수정 시에는 createdAt을 건드리지 않습니다.
             });
             Alert.alert("수정 완료", "상품 정보가 수정되었습니다.");
         } else {
@@ -199,7 +196,7 @@ export default function CreateMarketScreen() {
             Alert.alert("등록 완료", "상품이 등록되었습니다.");
         }
       
-      router.navigate('/(tabs)/marketlist');
+      router.back();
 
     } catch (error: any) {
       if (error.code === 'permission-denied' || error.message.includes('permission-denied')) {
@@ -215,7 +212,7 @@ export default function CreateMarketScreen() {
   };
 
   const handleBack = () => {
-    router.navigate('/(tabs)/marketlist');
+    router.back();
   };
 
   const handleDescriptionFocus = () => {
@@ -226,18 +223,13 @@ export default function CreateMarketScreen() {
 
   return (
     <View style={styles.container}>
+      {/* ✨ [수정] 헤더에서 완료 버튼 제거 */}
       <View style={[styles.header, { paddingTop: insets.top, height: headerHeight }]}>
         <TouchableOpacity onPress={handleBack} style={styles.headerButton}>
           <Ionicons name="close" size={28} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{params.postId ? "게시글 수정" : "물건 팔기"}</Text>
-        <TouchableOpacity onPress={handleSave} disabled={isSubmitting} style={styles.headerButton}>
-           {isSubmitting ? (
-             <ActivityIndicator size="small" color="#0062ffff" />
-           ) : (
-             <Text style={styles.headerActionText}>완료</Text>
-           )}
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{params.postId ? "게시글 수정" : "내 물건 팔기"}</Text>
+        <View style={{width: 40}} /> 
       </View>
 
       <KeyboardAvoidingView 
@@ -328,11 +320,29 @@ export default function CreateMarketScreen() {
                 onChangeText={setDescription}
                 onFocus={handleDescriptionFocus}
                 onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-                textAlignVertical="center"
+                textAlignVertical="top"
                 />
             </View>
             
-            <View style={{height: 120}} /> 
+            {/* ✨ [추가] 하단 등록 버튼 */}
+            <TouchableOpacity 
+                style={[
+                    styles.registerButton, 
+                    isSubmitting && styles.disabledButton
+                ]} 
+                onPress={handleSave}
+                disabled={isSubmitting}
+            >
+                {isSubmitting ? (
+                    <ActivityIndicator color="#fff" />
+                ) : (
+                    <Text style={styles.registerButtonText}>
+                        {params.postId ? "수정 완료" : "등록하기"}
+                    </Text>
+                )}
+            </TouchableOpacity>
+
+            <View style={{height: 60}} /> 
             </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
@@ -376,7 +386,8 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 17, fontWeight: '700', color: '#333' },
   headerButton: { padding: 5, minWidth: 40, alignItems: 'center' },
-  headerActionText: { fontSize: 16, fontWeight: '600', color: '#0062ffff' },
+  
+  // 헤더 텍스트 스타일 삭제됨 (사용하지 않음)
 
   scrollContent: { padding: 20 },
 
@@ -407,7 +418,7 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: '#f1f3f5', marginVertical: 15 },
 
   input: { fontSize: 16, color: '#333', paddingVertical: 6 },
-  textArea: { minHeight: 150, lineHeight: 24 },
+  textArea: { minHeight: 150, paddingVertical: 10 },
 
   pickerButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 },
   pickerButtonText: { fontSize: 16, color: '#333', fontWeight: '500' },
@@ -415,6 +426,22 @@ const styles = StyleSheet.create({
   priceContainer: { flexDirection: 'row', alignItems: 'center' },
   currencySymbol: { fontSize: 20, fontWeight: '600', marginRight: 8 },
   priceInput: { flex: 1, fontSize: 20, fontWeight: '700', color: '#333', paddingVertical: 5 },
+
+  // ✨ [추가] 등록 버튼 스타일
+  registerButton: { 
+    backgroundColor: '#0062ffff', // 마켓 메인 컬러
+    paddingVertical: 18, 
+    borderRadius: 12, 
+    alignItems: 'center', 
+    marginTop: 20,
+    elevation: 2, 
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  disabledButton: { backgroundColor: '#ccc' },
+  registerButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
 });
 
 const modalStyles = StyleSheet.create({

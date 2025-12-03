@@ -24,7 +24,8 @@ import { db } from '../../firebaseConfig';
 
 interface LostItem {
   id: string;
-  type: 'lost' | 'found';
+  type: string;
+  postType?: 'lost' | 'found'; // ✨ [핵심] 탭 구분용 필드
   itemName: string;
   location: string;
   createdAt: any;
@@ -35,64 +36,65 @@ interface LostItem {
 
 // ✨ 리스트 아이템 컴포넌트
 const ItemCard = memo(({ item, onPress }: { item: LostItem, onPress: (id: string) => void }) => {
-    // 이미지 처리 로직 (배열이 있으면 첫 번째꺼, 없으면 단일, 그도 없으면 null)
-    const thumbnail = item.imageUrls && item.imageUrls.length > 0 
-        ? item.imageUrls[0] 
-        : (item.imageUrl ? item.imageUrl : null);
-    
-    const moreImagesCount = item.imageUrls ? item.imageUrls.length - 1 : 0;
+  const thumbnail = item.imageUrls && item.imageUrls.length > 0 
+      ? item.imageUrls[0] 
+      : (item.imageUrl ? item.imageUrl : null);
+  
+  const moreImagesCount = item.imageUrls ? item.imageUrls.length - 1 : 0;
 
-    // 날짜 포맷팅
-    const dateString = item.createdAt?.toDate 
-        ? item.createdAt.toDate().toLocaleDateString() 
-        : '';
+  const dateString = item.createdAt?.toDate 
+      ? item.createdAt.toDate().toLocaleDateString() 
+      : '';
 
-    return (
-      <TouchableOpacity 
-          style={styles.card}
-          onPress={() => onPress(item.id)}
-          activeOpacity={0.9} 
-      >
-          <View style={styles.imageContainer}>
-            {thumbnail ? (
-                <>
-                    <Image source={{ uri: thumbnail }} style={styles.cardImage} />
-                    {moreImagesCount > 0 && (
-                        <View style={styles.multipleImageIcon}>
-                             <Ionicons name="layers" size={12} color="#fff" />
-                        </View>
-                    )}
-                </>
-            ) : (
-                <View style={[styles.noImageContainer, item.type === 'lost' ? styles.bgLostLight : styles.bgFoundLight]}>
-                    <Ionicons 
-                        name={item.type === 'lost' ? "search" : "gift-outline"} 
-                        size={32} 
-                        color={item.type === 'lost' ? "#ff6b6b" : "#4d96ff"} 
-                    />
+  // ✨ [핵심 수정] UI 표시에 postType 사용 (없으면 type 사용)
+  const displayType = item.postType || item.type;
+
+  return (
+    <TouchableOpacity 
+        style={styles.card}
+        onPress={() => onPress(item.id)}
+        activeOpacity={0.9} 
+    >
+        <View style={styles.imageContainer}>
+          {thumbnail ? (
+              <>
+                  <Image source={{ uri: thumbnail }} style={styles.cardImage} />
+                  {moreImagesCount > 0 && (
+                      <View style={styles.multipleImageIcon}>
+                           <Ionicons name="layers" size={12} color="#fff" />
+                      </View>
+                  )}
+              </>
+          ) : (
+              <View style={[styles.noImageContainer, displayType === 'lost' ? styles.bgLostLight : styles.bgFoundLight]}>
+                  <Ionicons 
+                      name={displayType === 'lost' ? "search" : "gift-outline"} 
+                      size={32} 
+                      color={displayType === 'lost' ? "#ff6b6b" : "#4d96ff"} 
+                  />
+              </View>
+          )}
+        </View>
+
+        <View style={styles.textContainer}>
+            <View style={styles.headerRow}>
+                <View style={[styles.badge, displayType === 'lost' ? styles.badgeLost : styles.badgeFound]}>
+                    <Text style={[styles.badgeText, displayType === 'lost' ? styles.textLost : styles.textFound]}>
+                        {displayType === 'lost' ? '분실' : '습득'}
+                    </Text>
                 </View>
-            )}
-          </View>
+                <Text style={styles.dateText}>{dateString}</Text>
+            </View>
 
-          <View style={styles.textContainer}>
-              <View style={styles.headerRow}>
-                  <View style={[styles.badge, item.type === 'lost' ? styles.badgeLost : styles.badgeFound]}>
-                      <Text style={[styles.badgeText, item.type === 'lost' ? styles.textLost : styles.textFound]}>
-                          {item.type === 'lost' ? '분실' : '습득'}
-                      </Text>
-                  </View>
-                  <Text style={styles.dateText}>{dateString}</Text>
-              </View>
-
-              <Text style={styles.title} numberOfLines={1}>{item.itemName}</Text>
-              
-              <View style={styles.locationRow}>
-                  <Ionicons name="location-sharp" size={14} color="#888" style={{marginRight: 2}} />
-                  <Text style={styles.locationText} numberOfLines={1}>{item.location}</Text>
-              </View>
-          </View>
-      </TouchableOpacity>
-    );
+            <Text style={styles.title} numberOfLines={1}>{item.itemName}</Text>
+            
+            <View style={styles.locationRow}>
+                <Ionicons name="location-sharp" size={14} color="#888" style={{marginRight: 2}} />
+                <Text style={styles.locationText} numberOfLines={1}>{item.location}</Text>
+            </View>
+        </View>
+    </TouchableOpacity>
+  );
 });
 ItemCard.displayName = "ItemCard";
 
@@ -141,7 +143,12 @@ export default function LostAndFoundScreen() {
   }, []);
 
   const filteredItems = items.filter(item => {
-      const matchesType = filter === 'all' || item.type === filter;
+      // ✨ [핵심 수정] 필터링 시 postType 우선 사용 (없으면 type)
+      // postType: 'lost'/'found' (목록 구분용)
+      // type: 'lost-item' (채팅 아이콘용)
+      const itemType = item.postType || item.type;
+      
+      const matchesType = filter === 'all' || itemType === filter;
       const query = searchQuery.toLowerCase();
       const matchesSearch = 
           item.itemName.toLowerCase().includes(query) || 
@@ -160,7 +167,7 @@ export default function LostAndFoundScreen() {
 
   const handleNavigateToWrite = (type: 'lost' | 'found') => {
       setWriteModalVisible(false);
-      router.push(`/(tabs)/create-lost-item?type=${type}`);
+      router.push(`/create-lost-item?type=${type}`);
   };
 
   const renderItem = useCallback(({ item }: { item: LostItem }) => (

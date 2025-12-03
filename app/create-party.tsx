@@ -19,7 +19,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { db } from '../../firebaseConfig';
+import { db } from '../firebaseConfig';
 
 // --- Constants & Data ---
 
@@ -182,7 +182,7 @@ export default function CreatePartyScreen() {
     try {
       await addDoc(collection(db, "taxiParties"), partyDetails);
       Alert.alert('파티 생성 완료', '새로운 택시 파티가 생성되었습니다!');
-      router.replace('/(tabs)/taxiparty'); 
+      router.back();
     } catch (error: any) {
       console.error("파티 생성 중 오류 발생: ", error);
       Alert.alert("오류", "파티 생성에 실패했습니다. 다시 시도해주세요.");
@@ -193,7 +193,7 @@ export default function CreatePartyScreen() {
     <View style={styles.outerContainer}>
       <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
         <View style={styles.headerBar}>
-          <TouchableOpacity onPress={() => router.replace('/(tabs)/taxiparty')} style={styles.backButton}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="close" size={28} color="#333" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>택시 파티 만들기</Text>

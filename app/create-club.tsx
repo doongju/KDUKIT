@@ -27,7 +27,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { db, storage } from '../../firebaseConfig';
+import { db, storage } from '../firebaseConfig';
 
 const ACTIVITY_FIELDS = ['학술', '스포츠', '봉사', '창작', '예술', '기타'];
 const MEMBER_LIMIT_OPTIONS = [...Array.from({ length: 11 }, (_, i) => (i + 2).toString()), '기타 (직접 입력)'];
@@ -56,7 +56,7 @@ export default function CreateClubScreen() {
   const [modalType, setModalType] = useState<'activityField' | 'memberLimit' | null>(null);
 
   const handleBack = useCallback(() => {
-    router.replace('/(tabs)/clublist');
+    router.back();
     return true; 
   },[router]);
 
@@ -207,7 +207,6 @@ export default function CreateClubScreen() {
           memberLimit: limitNumber,
           imageUrl: finalImageUrls[0] || null, 
           imageUrls: finalImageUrls, 
-          // ✨ [핵심 수정] type: 'club' 추가
           type: 'club', 
       };
 
@@ -224,7 +223,7 @@ export default function CreateClubScreen() {
         });
         Alert.alert("등록 완료", "모집글이 등록되었습니다.");
       }
-      router.replace('/(tabs)/clublist');
+      router.back();
     } catch (error: any) {
       if (error.code === 'permission-denied') {
         Alert.alert("이용 제한", "신고 누적으로 인해 글 작성이 제한되었습니다.");
@@ -261,17 +260,13 @@ export default function CreateClubScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
+      {/* Header - 완료 버튼 제거 */}
       <View style={[styles.header, { paddingTop: Platform.OS === 'android' ? 10 : 0 }]}>
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Ionicons name="close" size={28} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{params.postId ? "모집글 수정" : "새 모임 만들기"}</Text>
-        <TouchableOpacity onPress={handleSave} disabled={creatingPost || uploadingImage}>
-             {creatingPost ? <ActivityIndicator size="small" color="#0062ffff"/> : (
-                 <Text style={styles.saveButtonText}>완료</Text>
-             )}
-        </TouchableOpacity>
+        <View style={{width: 40}} /> 
       </View>
 
       <KeyboardAvoidingView 
@@ -382,14 +377,31 @@ export default function CreateClubScreen() {
                           textAlignVertical="top"
                           value={description}
                           onChangeText={setDescription}
-                          // ✨ 핵심: 내용 사이즈(줄바꿈)가 바뀌면 스크롤을 맨 아래로 내림
                           onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
                       />
                   </View>
               </View>
+
+              {/* ✨ [추가] 하단 등록 버튼 */}
+              <TouchableOpacity 
+                  style={[
+                      styles.registerButton, 
+                      creatingPost && styles.disabledButton
+                  ]} 
+                  onPress={handleSave}
+                  disabled={creatingPost || uploadingImage}
+              >
+                  {creatingPost ? (
+                      <ActivityIndicator color="#fff" />
+                  ) : (
+                      <Text style={styles.registerButtonText}>
+                          {params.postId ? "수정 완료" : "등록하기"}
+                      </Text>
+                  )}
+              </TouchableOpacity>
               
-              {/* ✨ 키보드가 올라왔을 때를 대비한 넉넉한 하단 여백 */}
-              <View style={{ height: 120 }} />
+              {/* 키보드 대응 여백 */}
+              <View style={{ height: 60 }} />
 
           </ScrollView>
         </TouchableWithoutFeedback>
@@ -431,7 +443,6 @@ const styles = StyleSheet.create({
   },
   backButton: { padding: 4 },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#1a1a1a' },
-  saveButtonText: { fontSize: 16, fontWeight: '700', color: '#0062ffff' },
 
   scrollContent: { padding: 20 },
 
@@ -481,6 +492,22 @@ const styles = StyleSheet.create({
   },
   selectButtonText: { fontSize: 16, color: '#333' },
   textArea: { minHeight: 150, lineHeight: 24 },
+
+  // ✨ [추가] 등록 버튼 스타일
+  registerButton: { 
+    backgroundColor: '#0062ffff', // 메인 컬러
+    paddingVertical: 18, 
+    borderRadius: 12, 
+    alignItems: 'center', 
+    marginTop: 30, // 폼과의 간격
+    elevation: 2, 
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  disabledButton: { backgroundColor: '#ccc' },
+  registerButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
 });
 
 const modalStyles = StyleSheet.create({

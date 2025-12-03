@@ -174,7 +174,7 @@ export default function TaxiPartyScreen() {
   }, []);
 
   const handleCreateParty = () => {
-    router.push('/(tabs)/create-party');
+    router.push('/create-party');
   };
 
   // 파티 삭제 (휴지통 버튼)
