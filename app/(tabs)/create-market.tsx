@@ -13,7 +13,7 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
-  Linking, // ✨ 추가: 설정 이동 기능
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -105,7 +105,6 @@ export default function CreateMarketScreen() {
         return;
     }
 
-    // ✨ [수정] 권한 확인 및 설정 이동 로직 추가
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert(
@@ -113,7 +112,7 @@ export default function CreateMarketScreen() {
         '설정에서 사진 라이브러리 접근 권한을 허용해주세요.',
         [
           { text: '취소', style: 'cancel' },
-          { text: '설정으로 이동', onPress: () => Linking.openSettings() } // 설정창 이동
+          { text: '설정으로 이동', onPress: () => Linking.openSettings() } 
         ]
       );
       return;
@@ -179,19 +178,17 @@ export default function CreateMarketScreen() {
             imageUrls: validUrls,   
             status: '판매중',
             creatorId: currentUser.uid,
+            // ✨ [핵심 수정] 여기에 type: 'market'을 추가합니다.
+            // 나중에 채팅방을 만들 때 이 값을 참조하게 됩니다.
+            type: 'market', 
             updatedAt: serverTimestamp(),
         };
 
         if (params.postId) {
             const postRef = doc(db, 'marketPosts', params.postId as string);
             await updateDoc(postRef, {
-                title: postData.title,
-                description: postData.description,
-                category: postData.category,
-                price: postData.price,
-                imageUrl: postData.imageUrl,
-                imageUrls: postData.imageUrls,
-                updatedAt: postData.updatedAt
+                ...postData,
+                // 수정 시에는 createdAt을 건드리지 않습니다.
             });
             Alert.alert("수정 완료", "상품 정보가 수정되었습니다.");
         } else {
@@ -330,13 +327,11 @@ export default function CreateMarketScreen() {
                 value={description}
                 onChangeText={setDescription}
                 onFocus={handleDescriptionFocus}
-                // ✅ 핵심: 내용 사이즈(줄바꿈)가 바뀌면 스크롤을 맨 아래로 내림
                 onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
                 textAlignVertical="center"
                 />
             </View>
             
-            {/* 키보드가 올라왔을 때를 대비한 넉넉한 하단 여백 */}
             <View style={{height: 120}} /> 
             </ScrollView>
         </TouchableWithoutFeedback>
