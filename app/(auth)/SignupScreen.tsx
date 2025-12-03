@@ -18,7 +18,7 @@ import {
   View,
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
-// ✨ 토큰 발급 함수 임포트
+// ✨ 토큰 함수 import
 import { registerForPushNotificationsAsync } from '../../utils/registerForPushNotificationsAsync';
 
 const DEPARTMENTS = [
@@ -56,7 +56,6 @@ export default function SignupScreen() {
   const [password, setPassword] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [name, setName] = useState("");
-  
   const [nickname, setNickname] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -64,26 +63,20 @@ export default function SignupScreen() {
   const [codeSent, setCodeSent] = useState(false);
   const [resendTimer, setResendTimer] = useState(0); 
   
-  // ✨ 인증 완료 여부 상태
   const [isVerified, setIsVerified] = useState(false);
-  
   const [showIosPicker, setShowIosPicker] = useState(false);
 
   const router = useRouter();
 
-  // ✨ 타이머 로직: 인증 완료(isVerified)되면 타이머 중지
   useEffect(() => {
     let timerId: ReturnType<typeof setTimeout> | null = null; 
-    
-    // 코드가 전송되었고, 시간이 남았으며, 아직 인증되지 않았을 때만 타이머 작동
     if (codeSent && resendTimer > 0 && !isVerified) {
       timerId = setTimeout(() => {
         setResendTimer(resendTimer - 1);
       }, 1000);
     } else if (resendTimer === 0 && codeSent && !isVerified) {
-      // 시간 초과 시
       setCodeSent(false);
-      setGeneratedCode(null); // 보안상 코드 초기화 권장
+      setGeneratedCode(null); 
       Alert.alert("시간 초과", "인증 시간이 만료되었습니다. 다시 시도해주세요.");
     }
     return () => {
@@ -118,8 +111,8 @@ export default function SignupScreen() {
     if (!validateInitialInputs()) return;
 
     setSendingCode(true); 
-    setIsVerified(false); // 재전송 시 인증 상태 초기화
-    setVerificationCode(""); // 입력창 초기화
+    setIsVerified(false); 
+    setVerificationCode(""); 
     setResendTimer(RESEND_TIME_SECONDS); 
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -156,15 +149,14 @@ export default function SignupScreen() {
     }
   };
 
-  // ✨ 인증번호 확인 버튼 핸들러
   const handleCheckCode = () => {
     if (!verificationCode) {
       Alert.alert("알림", "인증번호를 입력해주세요.");
       return;
     }
     if (verificationCode === generatedCode) {
-      setIsVerified(true); // 인증 성공 상태로 변경
-      setResendTimer(0); // 타이머 즉시 종료
+      setIsVerified(true); 
+      setResendTimer(0); 
       Alert.alert("인증 성공", "인증이 완료되었습니다. 비밀번호를 설정해주세요.");
     } else {
       Alert.alert("오류", "인증번호가 일치하지 않습니다.");
@@ -174,7 +166,6 @@ export default function SignupScreen() {
   const validateFinalInputs = () => {
     const passwordRegex = /^(?=.*[A-Za-z]).{6,}$/;
     
-    // ✨ 인증 완료 여부 확인
     if (!isVerified) {
         Alert.alert("오류", "이메일 인증을 먼저 완료해주세요.");
         return false;
@@ -199,12 +190,13 @@ export default function SignupScreen() {
       const userCredential = await createUserWithEmailAndPassword(auth, fullEmail, password);
       const userId = userCredential.user.uid;
 
-      // ✨ 토큰 발급 로직
+      // ✨ [추가] 토큰 발급
       let token = null;
       try {
          token = await registerForPushNotificationsAsync();
       } catch(e) { console.log("토큰 발급 실패:", e); }
 
+      // ✨ [수정] 회원 정보 DB 저장 (토큰 포함)
       await setDoc(doc(db, "users", userId), {
         name: name.trim(),
         nickname: nickname.trim(),
@@ -217,7 +209,6 @@ export default function SignupScreen() {
         blockedUsers: [],    
         wishlist: [],
         
-        // ✨ 토큰 저장 (없으면 null)
         pushToken: token || null 
       });
       
@@ -343,20 +334,17 @@ export default function SignupScreen() {
                 autoCapitalize="none"
                 keyboardType="email-address"
                 style={[styles.input, styles.emailIdInput]}
-                // ✨ 인증 완료되면 이메일 수정 불가
                 editable={!isVerified} 
             />
             <Text style={styles.emailDomainText}>{SCHOOL_DOMAIN}</Text>
         </View>
 
-        {/* ✨ 인증번호 입력 그룹 */}
         <View style={styles.verificationGroup}>
           <TextInput
             placeholder={isVerified ? "인증이 완료되었습니다" : "인증번호"}
             placeholderTextColor="#A9A9A9"
             value={verificationCode}
             onChangeText={setVerificationCode}
-            // 인증 전이고 코드가 발송된 상태여야 입력 가능
             editable={!isVerified && codeSent} 
             style={[
                 styles.input, 
@@ -365,7 +353,6 @@ export default function SignupScreen() {
             ]}
           />
           
-          {/* 버튼 분기 처리 */}
           {isVerified ? (
              <View style={[styles.verifyButton, { backgroundColor: '#4caf50' }]}>
                 <Text style={styles.verifyButtonText}>완료</Text>
@@ -397,7 +384,6 @@ export default function SignupScreen() {
           )}
         </View>
 
-        {/* 상태 메시지 */}
         {!isVerified && resendTimer > 0 && (
             <Text style={styles.statusText}>
               인증번호가 전송되었습니다. 입력 후 확인 버튼을 눌러주세요.
@@ -409,7 +395,6 @@ export default function SignupScreen() {
              </Text>
         )}
 
-        {/* ✨ 비밀번호 입력란 (인증 후 활성화) */}
         <View style={{ opacity: isVerified ? 1 : 0.5 }}>
             <TextInput
               placeholder={isVerified ? "비밀번호 (영문 포함 6자리 이상)" : "이메일 인증 후 입력 가능"}

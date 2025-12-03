@@ -1,5 +1,3 @@
-// components/ReviewModal.tsx
-
 import { Ionicons } from '@expo/vector-icons';
 import { collection, doc, getDoc, getDocs, increment, query, updateDoc, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
@@ -19,9 +17,9 @@ interface ReviewModalProps {
   visible: boolean;
   postId: string;
   postTitle: string;
-  sellerId: string; // 판매자(나) ID
+  sellerId: string; 
   onClose: () => void;
-  onComplete: () => void; // 완료 후 목록 새로고침용
+  onComplete: () => void; 
 }
 
 interface Candidate {
@@ -35,7 +33,7 @@ export default function ReviewModal({ visible, postId, postTitle, sellerId, onCl
   const [step, setStep] = useState<'selectBuyer' | 'rate'>('selectBuyer');
   const [selectedBuyer, setSelectedBuyer] = useState<Candidate | null>(null);
 
-  // 1. 이 상품으로 채팅한 사람 목록 가져오기
+  // 1. 이 상품으로 채팅한 사람 목록 가져오기 (학번+학과+닉네임 조합)
   useEffect(() => {
     if (visible && postId) {
       fetchChatCandidates();
@@ -63,17 +61,19 @@ export default function ReviewModal({ visible, postId, postTitle, sellerId, onCl
           const userSnap = await getDoc(doc(db, 'users', otherUid));
           let name = "알 수 없음";
           if (userSnap.exists()) {
-            const uData = userSnap.data();
-            if (uData.department) {
-                 let entryYear = "00";
-                 if (uData.email) {
-                     const prefix = uData.email.split('@')[0];
+            const d = userSnap.data();
+            
+            // ✨ [수정] 학번 + 학과 + 닉네임 표시
+            if (d.department && d.nickname) {
+                 let entryYear = "";
+                 if (d.email) {
+                     const prefix = d.email.split('@')[0];
                      const two = prefix.substring(0, 2);
                      if (!isNaN(Number(two)) && two.length === 2) entryYear = two;
                  }
-                 name = `${entryYear}학번 ${uData.department}`;
-            } else if (uData.name) {
-                name = uData.name;
+                 name = `${entryYear} ${d.department} ${d.nickname}`;
+            } else if (d.name) {
+                name = d.name;
             }
           }
           list.push({ uid: otherUid, displayName: name });
@@ -87,7 +87,7 @@ export default function ReviewModal({ visible, postId, postTitle, sellerId, onCl
     }
   };
 
-  // 2. 평가 및 점수 업데이트 (0점 초기화 방지 로직 포함)
+  // 2. 평가 및 점수 업데이트
   const handleReview = async (isGood: boolean) => {
     if (!selectedBuyer) return;
     setLoading(true);
@@ -108,9 +108,10 @@ export default function ReviewModal({ visible, postId, postTitle, sellerId, onCl
 
         if (buyerSnap.exists()) {
             const userData = buyerSnap.data();
+            
+            // ✨ [수정됨] 점수: +3점 / -15점
             const scoreDelta = isGood ? 3 : -15;
 
-            // ✨ 핵심: 점수가 없으면 50점 기준, 있으면 기존 점수에 increment
             if (userData.trustScore === undefined) {
                 await updateDoc(buyerRef, { trustScore: 50 + scoreDelta });
             } else {
@@ -176,11 +177,13 @@ export default function ReviewModal({ visible, postId, postTitle, sellerId, onCl
                   
                   <TouchableOpacity style={[styles.rateButton, {backgroundColor: '#e8f5e9'}]} onPress={() => handleReview(true)}>
                     <Ionicons name="happy" size={40} color="#28a745" />
+                    {/* ✨ 텍스트 수정 */}
                     <Text style={[styles.rateText, {color: '#28a745'}]}>좋았어요 (+3점)</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity style={[styles.rateButton, {backgroundColor: '#ffebee'}]} onPress={() => handleReview(false)}>
                     <Ionicons name="sad" size={40} color="#ff3b30" />
+                    {/* ✨ 텍스트 수정 */}
                     <Text style={[styles.rateText, {color: '#ff3b30'}]}>별로예요 (-15점)</Text>
                   </TouchableOpacity>
 

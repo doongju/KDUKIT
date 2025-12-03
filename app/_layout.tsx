@@ -1,7 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+// ✨ [추가] 알림 라이브러리 (에러 방지를 위해 * as 사용)
+import * as Notifications from 'expo-notifications';
 import { Stack, useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+// ✨ [수정] React Hook 에러 방지를 위한 import
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -10,6 +13,18 @@ import { auth } from '../firebaseConfig';
 
 const STORAGE_KEY_AUTO_LOGIN = 'AUTO_LOGIN_ENABLED';
 
+// ✨ [추가] 알림 핸들러 (문법 에러 방지용 return 명시)
+// @ts-ignore
+Notifications.setNotificationHandler({
+  handleNotification: async () => {
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    };
+  },
+}as any);
+
 export default function RootLayout() {
   const [user, setUser] = useState<User | null>(null);
   const [initializing, setInitializing] = useState(true);
@@ -17,9 +32,17 @@ export default function RootLayout() {
   const segments = useSegments();
   const navigationState = useRootNavigationState();
   
+  // 친구 코드: 앱 실행 감지 변수
   const isFirstCheck = useRef(true);
+  
+  // ✨ [추가] 알림 리스너 변수 (any 타입 + null 초기화로 에러 방지)
+  const responseListener = useRef<any>(null);
 
+<<<<<<< HEAD
   // 1. Firebase 인증 상태 감지
+=======
+  // 1. Firebase 인증 상태 감지 (친구 코드 100% 유지)
+>>>>>>> 92023f61e00b572c6b5e1f21588bcdca1a2865bf
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (isFirstCheck.current) {
@@ -40,22 +63,35 @@ export default function RootLayout() {
         } else {
           setUser(null);
         }
-        setInitializing(false);
+
+        setInitializing(false); 
+
       } else {
         setUser(currentUser);
       }
     });
-
     return () => unsubscribe();
   }, []);
 
+<<<<<<< HEAD
   // 2. 네비게이션 가드
+=======
+
+  // 2. 네비게이션 가드 (친구 코드 유지 + 안전장치)
+
+>>>>>>> 92023f61e00b572c6b5e1f21588bcdca1a2865bf
   useEffect(() => {
     if (initializing || !navigationState?.key) return;
+    
+    // ✨ segments가 준비되지 않았을 때 에러 방지
+    if (!segments || !Array.isArray(segments)) return;
 
-    const rootSegment = segments?.[0];
-
+    const rootSegment = segments[0];
+    
     if (user) {
+
+      // 로그인 됨 -> 메인으로 이동
+
       if (rootSegment === '(auth)' || !rootSegment) {
         router.replace('/(tabs)/explore');
       }
@@ -65,6 +101,27 @@ export default function RootLayout() {
       }
     }
   }, [user, initializing, segments, navigationState?.key]);
+
+  // ✨ [추가] 3. 알림 클릭 리스너 (우리가 만든 기능)
+  useEffect(() => {
+    // 사용자가 알림을 '클릭'했을 때 실행
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      // any로 변환하여 데이터 타입 에러 방지
+      const data = response.notification.request.content.data as any;
+      
+      if (data && data.url) {
+        console.log("👉 알림 클릭! 이동:", data.url);
+        router.push(data.url);
+      }
+    });
+
+    return () => {
+      // 리스너 제거 (최신 방식인 .remove() 사용 -> 에러 해결)
+      if (responseListener.current) {
+        responseListener.current.remove();
+      }
+    };
+  }, []);
 
   if (initializing) {
     return (
@@ -76,6 +133,13 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
+<<<<<<< HEAD
+=======
+
+      {/* ✨ [핵심 수정] 앱 전체를 KeyboardProvider로 감싸줍니다. 
+          statusBarTranslucent: 안드로이드에서 투명 상태바 대응을 위해 켜줍니다.
+      */}
+>>>>>>> 92023f61e00b572c6b5e1f21588bcdca1a2865bf
       <KeyboardProvider statusBarTranslucent>
         <StatusBar style={user ? "dark" : "light"} />
         
@@ -124,6 +188,7 @@ export default function RootLayout() {
           />
         </Stack>
       </KeyboardProvider>
+
     </SafeAreaProvider>
   );
 }

@@ -18,7 +18,17 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.kdu.kdukit",
-      "softwareKeyboardLayoutMode": "pan"
+      "googleServicesFile": "./google-services.json",
+      "softwareKeyboardLayoutMode": "pan",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.NOTIFICATIONS"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -36,12 +46,24 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "@react-native-firebase/app",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "사진을 선택하기 위해 라이브러리 접근 권한이 필요합니다.",
+          "cameraPermission": "사진을 촬영하기 위해 카메라 접근 권한이 필요합니다."
+        }
+      ],
       "expo-font",
       "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "1100e88b-7736-42c9-8af6-c911ccda6794"
+      }
     }
   }
 }
