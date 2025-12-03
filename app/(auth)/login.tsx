@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+// ✨ 필요한 함수 import 추가
+import { doc, updateDoc } from 'firebase/firestore';
 import * as React from 'react';
 import {
   Alert,
@@ -13,11 +15,13 @@ import {
   View
 } from 'react-native';
 import { Button, Checkbox, TextInput } from 'react-native-paper';
-import { auth } from '../../firebaseConfig';
+import { auth, db } from '../../firebaseConfig';
+// ✨ 토큰 유틸리티 import
+import { registerForPushNotificationsAsync } from '../../utils/registerForPushNotificationsAsync';
 
 const SCHOOL_DOMAIN = '@v.kduniv.ac.kr';
-const STORAGE_KEY_ID = 'SAVED_STUDENT_ID'; // 학번 저장 키
-const STORAGE_KEY_AUTO_LOGIN = 'AUTO_LOGIN_ENABLED'; // ✨ 자동 로그인 여부 저장 키
+const STORAGE_KEY_ID = 'SAVED_STUDENT_ID'; 
+const STORAGE_KEY_AUTO_LOGIN = 'AUTO_LOGIN_ENABLED'; 
 
 const BACKGROUND_IMAGE_URL = 'https://www.kduniv.ac.kr/attach/IMAGE/mimban/TMPL00/2021/9/GfnCrGlJ8SfmAPFIgpT5.jpg';
 
@@ -25,21 +29,18 @@ export default function LoginScreen() {
   const [studentId, setStudentId] = React.useState('');
   const [pw, setPw] = React.useState('');
   const [loading, setLoading] = React.useState(false);
-  const [rememberId, setRememberId] = React.useState(false); // '자동 로그인' 체크 상태
+  const [rememberId, setRememberId] = React.useState(false); 
 
   const router = useRouter();
 
-  // 화면이 처음 켜질 때 저장된 설정 불러오기
   React.useEffect(() => {
     const loadSettings = async () => {
       try {
-        // 1. 저장된 학번 불러오기
         const savedId = await AsyncStorage.getItem(STORAGE_KEY_ID);
         if (savedId) {
           setStudentId(savedId);
         }
         
-        // 2. 자동 로그인 설정 불러오기 (기본값 false)
         const autoLogin = await AsyncStorage.getItem(STORAGE_KEY_AUTO_LOGIN);
         if (autoLogin === 'true') {
             setRememberId(true);
@@ -67,15 +68,26 @@ export default function LoginScreen() {
     const fullEmail = `${studentId.trim()}${SCHOOL_DOMAIN}`;
 
     try {
-      await signInWithEmailAndPassword(auth, fullEmail, pw);
+      const userCredential = await signInWithEmailAndPassword(auth, fullEmail, pw);
       
-      // ✨ 로그인 성공 시 설정 저장 로직
+      // ✨ [추가됨] 로그인 성공 시 토큰 발급 및 DB 업데이트
+      try {
+         const user = userCredential.user;
+         const token = await registerForPushNotificationsAsync();
+         if (token) {
+            await updateDoc(doc(db, "users", user.uid), {
+                pushToken: token
+            });
+            console.log("✅ 로그인 토큰 저장 완료");
+         }
+      } catch (tokenError) {
+         console.log("⚠️ 토큰 저장 실패 (로그인은 성공):", tokenError);
+      }
+
       if (rememberId) {
-        // 체크됨: 학번 저장 & 자동 로그인 활성화 (true)
         await AsyncStorage.setItem(STORAGE_KEY_ID, studentId.trim());
         await AsyncStorage.setItem(STORAGE_KEY_AUTO_LOGIN, 'true');
       } else {
-        // 체크 해제됨: 학번 삭제 & 자동 로그인 비활성화 (false)
         await AsyncStorage.removeItem(STORAGE_KEY_ID);
         await AsyncStorage.setItem(STORAGE_KEY_AUTO_LOGIN, 'false');
       }
@@ -133,7 +145,6 @@ export default function LoginScreen() {
               theme={{ colors: { onSurfaceVariant: '#888888' } }}
             />
 
-            {/* ✨ 자동 로그인 체크박스 */}
             <View style={styles.checkboxContainer}>
               <TouchableOpacity 
                 style={styles.checkboxRow} 

@@ -1,5 +1,7 @@
 import { Picker } from '@react-native-picker/picker';
 import Checkbox from 'expo-checkbox';
+// ✨ 알림 라이브러리
+import * as Notifications from 'expo-notifications';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { addDoc, collection, deleteDoc, doc, getDocs, query, updateDoc, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
@@ -18,13 +20,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
-// ✨ 랜덤 파스텔 색상
 const CARD_COLORS = [
   '#FFADAD', '#FFD6A5', '#FDFFB6', '#CAFFBF', '#9BF6FF', 
   '#A0C4FF', '#BDB2FF', '#FFC6FF', '#E2F0CB', '#FFDAC1',
 ];
 
-// --- Types ---
 interface TimetableEntry {
   id: string;
   courseName: string;
@@ -41,7 +41,6 @@ interface PickerItemData {
   value: number;
 }
 
-// --- Constants ---
 const daysOfWeek = ['월', '화', '수', '목', '금']; 
 
 const generateTimeOptions = () => {
@@ -60,7 +59,6 @@ const generateTimeOptions = () => {
 const pickerTimeOptions = generateTimeOptions();
 const gridHours = Array.from({ length: 10 }, (_, i) => 9 + i); 
 
-// --- Helpers ---
 const parseTime = (timeString: string) => {
   if (timeString === '온라인 강의') return null;
   const parts = timeString.split(' ');
@@ -68,7 +66,6 @@ const parseTime = (timeString: string) => {
   const [day, timeRange] = parts;
   const [startTimeStr, endTimeStr] = timeRange.split('-');
   
-  // '월요일' -> '월' 처리
   const shortDay = day.replace('요일', '');
 
   const parseHourMinute = (hmStr: string) => {
@@ -93,7 +90,6 @@ const getColorByString = (str: string) => {
   return CARD_COLORS[index];
 };
 
-// 커스텀 피커 컴포넌트
 const CustomPicker = ({ 
   selectedValue, 
   onValueChange, 
@@ -170,7 +166,6 @@ const CustomPicker = ({
   );
 };
 
-// --- Main Screen ---
 const TimetableScreen: React.FC = () => {
   const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
   const [courseName, setCourseName] = useState('');
@@ -218,6 +213,47 @@ const TimetableScreen: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // ✨ [수정됨] 백틱(`) 대신 따옴표(")와 더하기(+) 사용 (문자열 오류 방지)
+  const scheduleClassNotification = async (day: string, startTime: number, className: string) => {
+    const dayMap: { [key: string]: number } = { '월': 2, '화': 3, '수': 4, '목': 5, '금': 6 };
+    const weekday = dayMap[day.replace('요일', '')];
+    
+    if (!weekday) return;
+
+    const hour = Math.floor(startTime);
+    const minute = Math.round((startTime % 1) * 60);
+
+    // 수업 10분 전
+    let triggerHour = hour;
+    let triggerMinute = minute - 10;
+    if (triggerMinute < 0) {
+        triggerMinute += 60;
+        triggerHour -= 1;
+    }
+
+    try {
+        await Notifications.scheduleNotificationAsync({
+            content: {
+                // ✨ 여기를 일반 문자열("")로 변경했습니다.
+                title: "수업 10분 전! ⏰",
+                body: className + " 수업이 곧 시작됩니다.",
+                sound: true,
+            },
+            // @ts-ignore
+            trigger: {
+                weekday: weekday,
+                hour: triggerHour,
+                minute: triggerMinute,
+                seconds: 0,
+                repeats: true,
+            },
+        });
+        console.log(className + " 알림 예약 완료");
+    } catch (e) {
+        console.log("알림 예약 실패:", e);
+    }
+  };
+
   const resetForm = () => {
     setIsEditing(false);
     setCurrentEditId(null);
@@ -241,7 +277,6 @@ const TimetableScreen: React.FC = () => {
       return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     };
 
-    // 저장 시 '월요일' 형태로 저장 (기존 데이터 호환)
     const dayToSave = selectedDay.endsWith('요일') ? selectedDay : `${selectedDay}요일`;
 
     const formattedTime = isOnline 
@@ -254,6 +289,11 @@ const TimetableScreen: React.FC = () => {
         await updateDoc(doc(db, 'timetables', currentEditId), {
           courseName, professor, location: finalLocation, time: formattedTime, isOnline,
         });
+        
+        if (!isOnline) {
+            await scheduleClassNotification(dayToSave, selectedStartTime, courseName);
+        }
+        
         Alert.alert('성공', '수정되었습니다!');
         resetForm(); 
       } else {
@@ -261,7 +301,14 @@ const TimetableScreen: React.FC = () => {
         await addDoc(collection(db, 'timetables'), {
           courseName, professor, location: finalLocation, time: formattedTime, userId: user.uid, isOnline, color: randomColor
         });
-        Alert.alert('성공', '추가되었습니다!');
+        
+        if (!isOnline) {
+            await scheduleClassNotification(dayToSave, selectedStartTime, courseName);
+            Alert.alert('성공', '추가되고 알림이 설정되었습니다! ⏰');
+        } else {
+            Alert.alert('성공', '추가되었습니다!');
+        }
+        
         resetForm(); 
       }
       fetchTimetable();
@@ -314,13 +361,11 @@ const TimetableScreen: React.FC = () => {
     }
   };
 
-  // 3️⃣ [렌더링] 시간표 그리드 UI
   const renderTimetableGrid = () => {
     const ROW_HEIGHT = 58; 
 
     return (
       <View style={styles.timetableGridContainer}>
-        {/* 요일 헤더 */}
         <View style={styles.dayHeaderRow}>
           <View style={styles.timeHeaderCell} />
           {daysOfWeek.map(day => (
@@ -330,10 +375,8 @@ const TimetableScreen: React.FC = () => {
           ))}
         </View>
 
-        {/* 시간대별 Row */}
         {gridHours.map((hour, index) => (
           <View key={hour} style={[styles.timeRow, { height: ROW_HEIGHT, borderBottomWidth: index === gridHours.length -1 ? 0 : 1 }]}>
-            {/* ✨ 한 줄 표시로 변경 */}
             <View style={styles.timeHeaderCell}>
               <Text style={styles.timeHeaderText}>
                 {`${String(hour).padStart(2, '0')}:00`}
@@ -470,7 +513,7 @@ const TimetableScreen: React.FC = () => {
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
                     <View style={{flex: 1}}>
                         <CustomPicker
-                            selectedValue={daysOfWeek.indexOf(selectedDay)}
+                            selectedValue={daysOfWeek.indexOf(selectedDay.replace('요일',''))}
                             onValueChange={(idx) => setSelectedDay(daysOfWeek[idx])}
                             items={daysOfWeek.map((d, i) => ({ label: d + '요일', value: i }))}
                         />
@@ -660,7 +703,6 @@ const styles = StyleSheet.create({
   dayHeaderCell: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 12 },
   dayHeaderText: { fontWeight: '700', fontSize: 13, color: '#555' },
   
-  // ✨ 시간 표시 셀 너비 증가 (50) 및 한 줄 스타일
   timeHeaderCell: { 
     width: 50, 
     justifyContent: 'center', 

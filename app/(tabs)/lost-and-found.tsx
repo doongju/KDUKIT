@@ -425,8 +425,12 @@ const styles = StyleSheet.create({
 
   /* FAB */
   fab: {
-    position: 'absolute', bottom: Platform.OS === 'ios' ? 90 : 30, right: 20,
-    width: 56, height: 56, borderRadius: 28,
+
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 100 : 90,
+    right: 20,
+    width: 56,
+    height: 56, borderRadius: 28,
     backgroundColor: '#0062ffff',
     justifyContent: 'center', alignItems: 'center',
     elevation: 5, shadowColor: '#0062ffff', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8,
