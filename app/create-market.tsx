@@ -1,10 +1,7 @@
-// app/create-market.tsx
-
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-// ✨ [수정] getDoc 추가
 import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { useEffect, useRef, useState } from 'react';
@@ -87,7 +84,7 @@ export default function CreateMarketScreen() {
       }
     } else {
       resetForm();
-    }// eslint-disable-next-line react-hooks/exhaustive-deps
+    }
   }, [params.postId, params.t]);
 
   const resetForm = () => {
@@ -98,19 +95,29 @@ export default function CreateMarketScreen() {
     setSelectedImages([]);
   };
 
+  // ✨ [수정됨] 권한 확인 로직 강화
   const pickImage = async () => {
     if (!currentUser) { Alert.alert("로그인 필요", "로그인이 필요합니다."); return; }
     
     if (selectedImages.length >= MAX_IMAGES) {
-        Alert.alert("알림", `최대 ${MAX_IMAGES}장까지만 등록 가능합니다.`);
-        return;
+      Alert.alert("알림", `최대 ${MAX_IMAGES}장까지만 등록 가능합니다.`);
+      return;
     }
 
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    // 1. 현재 권한 상태 확인
+    let { status } = await ImagePicker.getMediaLibraryPermissionsAsync();
+
+    // 2. 권한이 없다면 요청 (시스템 팝업)
+    if (status !== 'granted') {
+      const permissionResponse = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      status = permissionResponse.status;
+    }
+
+    // 3. 여전히 권한이 없다면 (거부됨) -> 설정으로 유도
     if (status !== 'granted') {
       Alert.alert(
         '권한 필요',
-        '설정에서 사진 라이브러리 접근 권한을 허용해주세요.',
+        '사진을 업로드하려면 갤러리 접근 권한이 필요합니다.\n설정에서 권한을 허용해주세요.',
         [
           { text: '취소', style: 'cancel' },
           { text: '설정으로 이동', onPress: () => Linking.openSettings() } 
@@ -119,10 +126,11 @@ export default function CreateMarketScreen() {
       return;
     }
 
+    // 4. 권한이 있으면 앨범 열기
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false, 
-      allowsMultipleSelection: true,
+      allowsMultipleSelection: true, // 여러 장 선택 가능
       selectionLimit: MAX_IMAGES - selectedImages.length,
       quality: 0.7,
     });
@@ -165,7 +173,7 @@ export default function CreateMarketScreen() {
     setUploadingImage(true);
     
     try {
-        // ✨ [추가] 사용자 정보(displayId) 가져오기
+        // 사용자 정보(displayId) 가져오기
         const userDocRef = doc(db, "users", currentUser.uid);
         const userSnapshot = await getDoc(userDocRef);
         
@@ -173,7 +181,7 @@ export default function CreateMarketScreen() {
         if (userSnapshot.exists()) {
             const userData = userSnapshot.data();
             if (userData.displayId) {
-                authorName = userData.displayId; // 예: "12학번 컴퓨터공학과 #A123"
+                authorName = userData.displayId;
             }
         }
 
@@ -193,7 +201,6 @@ export default function CreateMarketScreen() {
             creatorId: currentUser.uid,
             type: 'market', 
             updatedAt: serverTimestamp(),
-            // ✨ [추가] 작성자 이름(식별 ID) 저장
             creatorName: authorName, 
         };
 
@@ -238,7 +245,6 @@ export default function CreateMarketScreen() {
 
   return (
     <View style={styles.container}>
-      {/* ✨ [수정] 헤더에서 완료 버튼 제거 */}
       <View style={[styles.header, { paddingTop: insets.top, height: headerHeight }]}>
         <TouchableOpacity onPress={handleBack} style={styles.headerButton}>
           <Ionicons name="close" size={28} color="#333" />
@@ -339,7 +345,6 @@ export default function CreateMarketScreen() {
                 />
             </View>
             
-            {/* ✨ [추가] 하단 등록 버튼 */}
             <TouchableOpacity 
                 style={[
                     styles.registerButton, 
