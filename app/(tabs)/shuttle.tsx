@@ -193,8 +193,8 @@ const ShuttleScreen = () => {
   // 테스트 데이터
   const getTestSchedules = (): ScheduleItem[] => {
     return [
-      { time: '23:05', note: 'TEST (곧 도착)' },
-      { time: '23:10', note: 'TEST (다음 차)' },
+      { time: '01:54', note: 'TEST (곧 도착)' },
+      { time: '01:55', note: 'TEST (다음 차)' },
     ];
   };
 
@@ -406,8 +406,13 @@ const ShuttleScreen = () => {
   // --- 카드 렌더링 ---
   const renderBusCard = (item: ScheduleItem, isMain: boolean) => {
     const dayOfWeek = now.getDay();
-    const busCount = getBusCount(selectedRoute, direction, item.time, dayOfWeek);
+    const isTest = item.note?.includes('TEST'); 
+    let busCount = getBusCount(selectedRoute, direction, item.time, dayOfWeek);
     
+    if (isTest && busCount === 0) {
+    busCount = 1;
+    }
+
     if (busCount === 0) return null;
 
     const BUS_CAPACITY = 45;
@@ -416,7 +421,7 @@ const ShuttleScreen = () => {
     const info = statusMap[item.time] || { totalCount: 0, isReserved: false, isBoarded: false };
     const minsLeft = getMinutesLeft(item.time);
     const isOpen = minsLeft <= 30 && minsLeft >= 0;
-    const isTest = item.note?.includes('TEST'); 
+ 
     
     const isFull = info.totalCount >= totalCapacity;
 
@@ -424,7 +429,7 @@ const ShuttleScreen = () => {
     let buttonColor = "#ccc";
     let buttonAction = () => {};
     let disabled = true;
-
+    
     const isPenaltyActive = penaltyEndTime !== null && secondsLeft > 0;
 
     if (isOpen) {

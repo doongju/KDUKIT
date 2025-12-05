@@ -1,22 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-// ✨ 필요한 함수 import 추가
 import { doc, updateDoc } from 'firebase/firestore';
 import * as React from 'react';
 import {
   Alert,
   ImageBackground,
   Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Text as RNText,
   StyleSheet,
-  TouchableOpacity,
   TouchableWithoutFeedback,
   View
 } from 'react-native';
-import { Button, Checkbox, TextInput } from 'react-native-paper';
+import { Button, Switch, TextInput } from 'react-native-paper';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../../firebaseConfig';
-// ✨ 토큰 유틸리티 import
 import { registerForPushNotificationsAsync } from '../../utils/registerForPushNotificationsAsync';
 
 const SCHOOL_DOMAIN = '@v.kduniv.ac.kr';
@@ -70,7 +71,6 @@ export default function LoginScreen() {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, fullEmail, pw);
       
-      // ✨ [추가됨] 로그인 성공 시 토큰 발급 및 DB 업데이트
       try {
          const user = userCredential.user;
          const token = await registerForPushNotificationsAsync();
@@ -108,96 +108,113 @@ export default function LoginScreen() {
   };
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <ImageBackground
+    <ImageBackground
         source={{ uri: BACKGROUND_IMAGE_URL }}
         style={styles.background}
-        blurRadius={3}
-      >
-        <View style={styles.overlay}>
-          <RNText style={styles.mainTitle}>KDU KIT.</RNText>
-          <RNText style={styles.subTitle}>편리한 경동대 생활 도우미</RNText>
+        blurRadius={2}
+    >
+        <StatusBar style="dark" />
 
-          <View style={styles.formContainer}>
-            <View style={styles.emailInputContainer}>
-                <TextInput
-                    label="학번"
-                    value={studentId}
-                    onChangeText={setStudentId}
-                    autoCapitalize="none"
-                    keyboardType="number-pad"
-                    style={styles.studentIdInput}
-                    textColor="#000000"
-                    theme={{ colors: { onSurfaceVariant: '#888888' } }}
-                />
-                <View style={styles.domainContainer}>
-                    <RNText style={styles.domainText}>{SCHOOL_DOMAIN}</RNText>
+        <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoidingView}
+        >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <View style={styles.overlay}>
+                    <SafeAreaView style={styles.safeArea}>
+                        <View style={styles.contentContainer}>
+                            <RNText style={styles.mainTitle}>KDU KIT.</RNText>
+                            <RNText style={styles.subTitle}>편리한 경동대 생활 도우미</RNText>
+
+                            <View style={styles.formContainer}>
+                                <View style={styles.emailInputContainer}>
+                                    <TextInput
+                                        label="학번"
+                                        value={studentId}
+                                        onChangeText={setStudentId}
+                                        autoCapitalize="none"
+                                        keyboardType="number-pad"
+                                        style={styles.studentIdInput}
+                                        textColor="#000000"
+                                        theme={{ colors: { onSurfaceVariant: '#888888' } }}
+                                        underlineColor="transparent" 
+                                        activeUnderlineColor="transparent"
+                                    />
+                                    <View style={styles.domainContainer}>
+                                        <RNText style={styles.domainText}>{SCHOOL_DOMAIN}</RNText>
+                                    </View>
+                                </View>
+
+                                <TextInput
+                                    label="비밀번호"
+                                    value={pw}
+                                    onChangeText={setPw}
+                                    secureTextEntry
+                                    style={styles.input}
+                                    textColor="#000000"
+                                    theme={{ colors: { onSurfaceVariant: '#888888' } }}
+                                    // ✨ 투명 밑줄 속성 제거 -> 기본 스타일로 복귀
+                                />
+
+                                <View style={styles.autoLoginContainer}>
+                                    <RNText style={styles.autoLoginText}>자동 로그인</RNText>
+                                    <Switch
+                                        value={rememberId}
+                                        onValueChange={setRememberId}
+                                        color="#0062ffff"
+                                    />
+                                </View>
+                                
+                                <Button
+                                    mode="contained"
+                                    onPress={handleLogin}
+                                    loading={loading}
+                                    style={styles.loginButton}
+                                    contentStyle={{ height: 50 }}
+                                    labelStyle={{ fontSize: 18, fontWeight: 'bold' }}
+                                    buttonColor="#0062ffff"
+                                    textColor="#fff"
+                                >
+                                    로그인
+                                </Button>
+
+                                <Button
+                                    mode="text"
+                                    onPress={() => router.push('/(auth)/SignupScreen')}
+                                    style={{ marginTop: 15 }}
+                                    textColor="#0062ffff"
+                                    labelStyle={{ fontSize: 16, fontWeight: '600' }}
+                                >
+                                    계정이 없으신가요? 회원가입
+                                </Button>
+                            </View>
+                        </View>
+                    </SafeAreaView>
                 </View>
-            </View>
-
-            <TextInput
-              label="비밀번호"
-              value={pw}
-              onChangeText={setPw}
-              secureTextEntry
-              style={styles.input}
-              textColor="#000000"
-              theme={{ colors: { onSurfaceVariant: '#888888' } }}
-            />
-
-            <View style={styles.checkboxContainer}>
-              <TouchableOpacity 
-                style={styles.checkboxRow} 
-                onPress={() => setRememberId(!rememberId)}
-              >
-                <Checkbox
-                  status={rememberId ? 'checked' : 'unchecked'}
-                  onPress={() => setRememberId(!rememberId)}
-                  color="#0062ffff"
-                />
-                <RNText style={styles.checkboxLabel}>자동 로그인 (아이디 기억하기)</RNText>
-              </TouchableOpacity>
-            </View>
-            
-            <Button
-              mode="contained"
-              onPress={handleLogin}
-              loading={loading}
-              style={styles.loginButton}
-              contentStyle={{ height: 50 }}
-              labelStyle={{ fontSize: 18, fontWeight: 'bold' }}
-              buttonColor="#0062ffff"
-              textColor="#fff"
-            >
-              로그인
-            </Button>
-
-            <Button
-              mode="text"
-              onPress={() => router.push('/(auth)/SignupScreen')}
-              style={{ marginTop: 15 }}
-              textColor="#0062ffff"
-              labelStyle={{ fontSize: 16, fontWeight: '600' }}
-            >
-              계정이 없으신가요? 회원가입
-            </Button>
-          </View>
-        </View>
-      </ImageBackground>
-    </TouchableWithoutFeedback>
+            </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   background: {
     flex: 1,
-    justifyContent: 'center',
+  },
+  keyboardAvoidingView: {
+    flex: 1,
   },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.85)',
+  },
+  safeArea: {
+    flex: 1,
     justifyContent: 'center',
     paddingHorizontal: 30,
+  },
+  contentContainer: {
+    width: '100%',
   },
   mainTitle: {
     fontSize: 40,
@@ -216,6 +233,7 @@ const styles = StyleSheet.create({
   formContainer: {
     width: '100%',
   },
+  // ✨ 스타일 원상 복구 (처음 주셨던 코드의 스타일)
   emailInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -244,6 +262,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     paddingTop: 16,
   },
+  // ✨ 비밀번호 입력창 스타일 원상 복구
   input: {
     marginBottom: 10,
     backgroundColor: '#f2f3f7',
@@ -251,20 +270,17 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 8,
     borderRadius: 8,
   },
-  checkboxContainer: {
+  autoLoginContainer: {
     flexDirection: 'row',
-    justifyContent: 'flex-start',
-    marginBottom: 20,
-    marginLeft: -5,
-  },
-  checkboxRow: {
-    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 5,
   },
-  checkboxLabel: {
-    fontSize: 15,
+  autoLoginText: {
+    fontSize: 16,
     color: '#444',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   loginButton: {
     borderRadius: 12,

@@ -273,6 +273,7 @@ Email: ${user.email}
   return (
     <ScrollView 
         style={styles.container}
+        contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#0062ffff']} />}
     >
         <View style={[styles.headerContainer, { paddingTop: insets.top }]}> 
@@ -384,8 +385,6 @@ Email: ${user.email}
                 </View>
             </>
         )}
-        
-        <View style={{ height: 50 }} />
 
         <PasswordConfirmModal 
             visible={passwordModalVisible}

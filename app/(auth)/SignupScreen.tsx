@@ -85,7 +85,10 @@ export default function SignupScreen() {
   }, [codeSent, resendTimer, isVerified]);
 
   const validateInitialInputs = () => {
-    const nameRegex = /^[가-힣\s]{1,}$/; 
+    const nameRegex = /^[가-힣\s]{1,}$/;
+    // ✨ [추가] 학번 정규식: 숫자(\d)가 정확히 7개({7})여야 함
+    const studentIdRegex = /^\d{7}$/;
+
     if (!nameRegex.test(name) || name.trim().length === 0) {
         Alert.alert("오류", "이름은 한글만 입력 가능하며 공백이 아니어야 합니다.");
         return false;
@@ -94,8 +97,16 @@ export default function SignupScreen() {
         Alert.alert("오류", "학과를 선택해주세요.");
         return false;
     }
-    if (emailId.trim().length === 0) {
-        Alert.alert("오류", "이메일 ID를 입력해주세요.");
+    // ✨ [수정] 학번 유효성 검사 로직 강화
+    const trimmedEmail = emailId.trim();
+    if (trimmedEmail.length === 0) {
+        Alert.alert("오류", "학번(이메일 ID)을 입력해주세요.");
+        return false;
+    }
+    
+    // 숫자가 아니거나 7자리가 아니면 차단
+    if (!studentIdRegex.test(trimmedEmail)) {
+        Alert.alert("오류", "학번은 7자리 숫자여야 합니다.\n(예: 2025123)");
         return false;
     }
     return true;
@@ -328,12 +339,15 @@ export default function SignupScreen() {
 
         <View style={styles.emailGroup}>
             <TextInput
-                placeholder="학교 이메일 ID"
+                placeholder="학번 (7자리)"
                 placeholderTextColor="#A9A9A9"
                 value={emailId}
                 onChangeText={setEmailId}
                 autoCapitalize="none"
-                keyboardType="email-address"
+                // ✨ [수정] 숫자 키패드만 나오게 설정
+                keyboardType="number-pad" 
+                // ✨ [수정] 최대 7글자까지만 입력 가능하게 제한
+                maxLength={7}
                 style={[styles.input, styles.emailIdInput]}
                 editable={!isVerified} 
             />

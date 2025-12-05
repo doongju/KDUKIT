@@ -1,6 +1,5 @@
 import { Picker } from '@react-native-picker/picker';
 import Checkbox from 'expo-checkbox';
-// ✨ 알림 라이브러리
 import * as Notifications from 'expo-notifications';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { addDoc, collection, deleteDoc, doc, getDocs, query, updateDoc, where } from 'firebase/firestore';
@@ -43,20 +42,25 @@ interface PickerItemData {
 
 const daysOfWeek = ['월', '화', '수', '목', '금']; 
 
+// ✨ [수정 1] 시간 옵션을 9:30 ~ 18:30, 1시간 단위로 생성
 const generateTimeOptions = () => {
   const options = [];
-  const startHour = 9;
-  const endHour = 19; 
+  // 9.5(09:30) 부터 18.5(18:30) 까지 1시간 간격
+  const startValue = 9.5; 
+  const endValue = 18.5;
 
-  for (let h = startHour; h < endHour; h++) {
-    options.push({ label: `${String(h).padStart(2, '0')}:30`, value: h });
+  for (let t = startValue; t <= endValue; t += 1) {
+    const h = Math.floor(t);
+    const m = (t % 1) * 60;
+    const label = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    options.push({ label, value: t });
   }
-  options.push({ label: `${endHour}:00`, value: endHour });
   
   return options;
 };
 
 const pickerTimeOptions = generateTimeOptions();
+// 그리드 배경은 9시, 10시... 정각 기준으로 그림 (배치 시 오차 계산됨)
 const gridHours = Array.from({ length: 10 }, (_, i) => 9 + i); 
 
 const parseTime = (timeString: string) => {
@@ -174,6 +178,7 @@ const TimetableScreen: React.FC = () => {
   
   const [selectedDay, setSelectedDay] = useState<string>('월');
   
+  // 기본값 설정: 09:30 시작, 10:30 종료
   const [selectedStartTime, setSelectedStartTime] = useState<number>(9.5);
   const [selectedEndTime, setSelectedEndTime] = useState<number>(10.5);
 
@@ -213,7 +218,6 @@ const TimetableScreen: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // ✨ [수정됨] 백틱(`) 대신 따옴표(")와 더하기(+) 사용 (문자열 오류 방지)
   const scheduleClassNotification = async (day: string, startTime: number, className: string) => {
     const dayMap: { [key: string]: number } = { '월': 2, '화': 3, '수': 4, '목': 5, '금': 6 };
     const weekday = dayMap[day.replace('요일', '')];
@@ -223,7 +227,6 @@ const TimetableScreen: React.FC = () => {
     const hour = Math.floor(startTime);
     const minute = Math.round((startTime % 1) * 60);
 
-    // 수업 10분 전
     let triggerHour = hour;
     let triggerMinute = minute - 10;
     if (triggerMinute < 0) {
@@ -234,7 +237,6 @@ const TimetableScreen: React.FC = () => {
     try {
         await Notifications.scheduleNotificationAsync({
             content: {
-                // ✨ 여기를 일반 문자열("")로 변경했습니다.
                 title: "수업 10분 전! ⏰",
                 body: className + " 수업이 곧 시작됩니다.",
                 sound: true,
@@ -248,7 +250,6 @@ const TimetableScreen: React.FC = () => {
                 repeats: true,
             },
         });
-        console.log(className + " 알림 예약 완료");
     } catch (e) {
         console.log("알림 예약 실패:", e);
     }
@@ -267,17 +268,54 @@ const TimetableScreen: React.FC = () => {
     setIsAdding(false);
   };
 
+  // ✨ [추가 2] 시간 중복 확인 함수
+  const checkTimeConflict = (day: string, start: number, end: number, excludeId: string | null) => {
+    const dayShort = day.replace('요일', '');
+
+    for (const item of timetable) {
+      // 온라인 강의나 현재 수정 중인 강의는 제외
+      if (item.isOnline) continue;
+      if (excludeId && item.id === excludeId) continue;
+
+      const parsed = parseTime(item.time);
+      if (!parsed) continue;
+
+      // 같은 요일인지 확인
+      if (parsed.day === dayShort) {
+        // 시간 겹침 로직: (새 수업 시작시간 < 기존 수업 종료시간) AND (새 수업 종료시간 > 기존 수업 시작시간)
+        if (start < parsed.end && end > parsed.start) {
+          return true; // 중복 발생
+        }
+      }
+    }
+    return false; // 중복 없음
+  };
+
   const handleAddEntry = async () => {
     if (!courseName || !user) { Alert.alert('오류', '과목명을 입력해주세요.'); return; }
-    if (!isOnline && selectedStartTime >= selectedEndTime) { Alert.alert('오류', '종료 시간은 시작 시간보다 늦어야 합니다.'); return; }
+    
+    // 종료 시간이 시작 시간보다 같거나 빠르면 오류
+    if (!isOnline && selectedStartTime >= selectedEndTime) { 
+        Alert.alert('오류', '종료 시간은 시작 시간보다 늦어야 합니다.'); 
+        return; 
+    }
+
+    const dayToSave = selectedDay.endsWith('요일') ? selectedDay : `${selectedDay}요일`;
+
+    // ✨ 중복 체크 실행
+    if (!isOnline) {
+        const hasConflict = checkTimeConflict(dayToSave, selectedStartTime, selectedEndTime, currentEditId);
+        if (hasConflict) {
+            Alert.alert('중복 오류', '해당 시간에 이미 다른 수업이 있습니다.');
+            return;
+        }
+    }
 
     const formatTimeValue = (value: number) => {
       const h = Math.floor(value);
       const m = Math.round((value % 1) * 60);
       return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     };
-
-    const dayToSave = selectedDay.endsWith('요일') ? selectedDay : `${selectedDay}요일`;
 
     const formattedTime = isOnline 
       ? '온라인 강의' 
@@ -389,9 +427,12 @@ const TimetableScreen: React.FC = () => {
                   const parsedTime = parseTime(item.time);
                   
                   if (parsedTime && parsedTime.day === day) {
+                    // 시작 시간이 현재 hour 구간 안에 있거나 (예: 9.5는 9구간에 포함)
+                    // 정확히 표현하기 위해 시작시간의 정수부분이 현재 hour와 같은지 확인
                     if (Math.floor(parsedTime.start) === hour) {
                       const durationInHours = parsedTime.end - parsedTime.start;
                       const blockHeight = durationInHours * ROW_HEIGHT;
+                      // 9시 기준: 9.5시 시작이면 0.5 * height 만큼 아래로
                       const topOffset = (parsedTime.start - hour) * ROW_HEIGHT;
 
                       const backgroundColor = item.color || getColorByString(item.courseName);
@@ -533,6 +574,7 @@ const TimetableScreen: React.FC = () => {
                     <CustomPicker
                       selectedValue={selectedEndTime}
                       onValueChange={setSelectedEndTime}
+                      // 시작 시간보다 뒤에 있는 시간만 보여줌
                       items={pickerTimeOptions.filter(o => o.value > selectedStartTime)}
                     />
                   </View>
@@ -542,7 +584,7 @@ const TimetableScreen: React.FC = () => {
 
             <View style={styles.formActionRow}>
                 {isEditing && (
-                     <TouchableOpacity style={[styles.actionButton, styles.cancelButton]} onPress={resetForm}>
+                      <TouchableOpacity style={[styles.actionButton, styles.cancelButton]} onPress={resetForm}>
                         <Text style={[styles.actionButtonText, {color:'#666'}]}>취소</Text>
                     </TouchableOpacity>
                 )}
