@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { deleteUser, getAuth, signOut } from 'firebase/auth';
+import { deleteUser, getAuth, sendPasswordResetEmail, signOut } from 'firebase/auth';
 import {
     arrayRemove,
     collection,
@@ -140,6 +140,33 @@ export default function ProfileScreen() {
       ]);
   };
 
+  const handleChangePassword = () => {
+    if (!user || !user.email) return;
+
+    Alert.alert(
+      "비밀번호 변경",
+      `${user.email} 주소로\n비밀번호 재설정 메일을 발송합니다.\n\n메일 발송 후 보안을 위해 자동 로그아웃됩니다. 계속하시겠습니까?`,
+      [
+        { text: "취소", style: "cancel" },
+        {
+          text: "발송 및 로그아웃",
+          onPress: async () => {
+            try {
+              // 1. 메일 발송
+              await sendPasswordResetEmail(auth, user.email!);
+              Alert.alert("발송 완료", "메일함을 확인하여 비밀번호를 변경해주세요.");
+              
+              // 2. 로그아웃 처리 (사용자 요청 사항)
+              await signOut(auth);
+            } catch (error: any) {
+              console.error(error);
+              Alert.alert("오류", "메일 발송 중 문제가 발생했습니다.\n잠시 후 다시 시도해주세요.");
+            }
+          }
+        }
+      ]
+    );
+  };
   // ✨ [추가됨] 관리자 이메일 문의 함수
   const handleContactAdmin = () => {
     if (!user) return;
@@ -341,7 +368,12 @@ Email: ${user.email}
                         <Text style={styles.menuText}>관심 목록 (찜)</Text>
                         <Ionicons name="chevron-forward" size={20} color="#ccc" />
                     </TouchableOpacity>
-                    
+                    {/* ✨ [추가됨] 비밀번호 변경 버튼 (위치는 관심 목록 아래가 적절) */}
+                    <TouchableOpacity style={styles.menuItem} onPress={handleChangePassword}>
+                        <Ionicons name="lock-closed-outline" size={24} color="#555" />
+                        <Text style={styles.menuText}>비밀번호 변경</Text>
+                        <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                    </TouchableOpacity>
                     {/* ✨ [추가됨] 관리자 문의 버튼 */}
                     <TouchableOpacity style={styles.menuItem} onPress={handleContactAdmin}>
                         <Ionicons name="headset-outline" size={24} color="#555" />

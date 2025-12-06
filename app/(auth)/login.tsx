@@ -111,7 +111,7 @@ export default function LoginScreen() {
     <ImageBackground
         source={{ uri: BACKGROUND_IMAGE_URL }}
         style={styles.background}
-        blurRadius={2}
+        blurRadius={1}
     >
         <StatusBar style="dark" />
 

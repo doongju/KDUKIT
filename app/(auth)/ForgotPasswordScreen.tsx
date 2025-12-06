@@ -2,14 +2,14 @@ import { useRouter } from 'expo-router';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import * as React from 'react';
 import {
-    Alert,
-    Keyboard,
-    KeyboardAvoidingView,
-    Platform,
-    Text as RNText,
-    StyleSheet,
-    TouchableWithoutFeedback,
-    View
+  Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Text as RNText,
+  StyleSheet,
+  TouchableWithoutFeedback,
+  View
 } from 'react-native';
 import { Button, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,6 +23,7 @@ export default function ForgotPasswordScreen() {
   const router = useRouter();
 
   const handleResetPassword = async () => {
+    Keyboard.dismiss()
     if (!studentId.trim()) {
       Alert.alert('알림', '학번을 입력해주세요.');
       return;
@@ -30,14 +31,14 @@ export default function ForgotPasswordScreen() {
 
     setLoading(true);
     const fullEmail = `${studentId.trim()}${SCHOOL_DOMAIN}`;
-    console.log('Attempting to send reset email to:', fullEmail);
+    console.log('비밀번호 재설정 요청 이메일:', fullEmail);
 
     try {
       await sendPasswordResetEmail(auth, fullEmail);
       Alert.alert(
         '이메일 발송 성공',
         `${fullEmail}로 비밀번호 재설정 메일을 보냈습니다.\n\n스팸 메일함도 꼭 확인해주세요!`,
-        [{ text: '확인', onPress: () => router.back() }]
+        [{ text: '확인', onPress: () => router.replace('/(auth)/login') }]
       );
     } catch (e: any) {
       console.log('Reset Password Error:', e);
@@ -103,7 +104,7 @@ export default function ForgotPasswordScreen() {
 
             <Button
               mode="text"
-              onPress={() => router.back()}
+              onPress={() => router.replace('/(auth)/login')}
               style={styles.backButton}
               textColor="#666"
             >
