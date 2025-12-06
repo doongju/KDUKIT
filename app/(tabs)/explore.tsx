@@ -70,9 +70,16 @@ const ExploreScreen: React.FC = () => {
        const today: any[] = []; const online: any[] = [];
        snapshot.docs.forEach(doc => {
          const d = { id: doc.id, ...doc.data() } as any;
-         if(d.isOnline) online.push(d); else if(d.time.startsWith(todayStr)) today.push(d);
+         
+         if(d.isOnline) {
+             online.push(d);
+         } 
+         // ✨ 수정됨: d.time이 존재하는지 먼저 확인 (&&)
+         else if(d.time && d.time.startsWith(todayStr)) {
+             today.push(d);
+         }
        });
-       today.sort((a,b)=>a.time.localeCompare(b.time));
+       today.sort((a,b)=> (a.time || '').localeCompare(b.time || '')); // 정렬할 때도 안전하게 처리
        setTodayClasses(today); setOnlineClasses(online);
     });
     // 2. 장터
