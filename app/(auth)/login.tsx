@@ -24,7 +24,7 @@ const SCHOOL_DOMAIN = '@v.kduniv.ac.kr';
 const STORAGE_KEY_ID = 'SAVED_STUDENT_ID'; 
 const STORAGE_KEY_AUTO_LOGIN = 'AUTO_LOGIN_ENABLED'; 
 
-const BACKGROUND_IMAGE_URL = 'https://www.kduniv.ac.kr/attach/IMAGE/mimban/TMPL00/2021/9/GfnCrGlJ8SfmAPFIgpT5.jpg';
+const BACKGROUND_IMAGE = require('../../assets/images/login-bg.jpg');
 
 export default function LoginScreen() {
   const [studentId, setStudentId] = React.useState('');
@@ -109,7 +109,7 @@ export default function LoginScreen() {
 
   return (
     <ImageBackground
-        source={{ uri: BACKGROUND_IMAGE_URL }}
+        source={BACKGROUND_IMAGE}
         style={styles.background}
         blurRadius={1}
     >
