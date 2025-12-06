@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { getAuth } from 'firebase/auth';
-import { doc, getDoc, increment, writeBatch } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, increment, updateDoc } from 'firebase/firestore'; // ✨ batch 제거, 개별 update 사용
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,6 +13,8 @@ import {
   View
 } from 'react-native';
 import { db } from '../firebaseConfig';
+// ✨ 신뢰도 서비스 import (경로 확인!)
+import { checkTrustScoreEligibility, logTrustScoreTransaction } from '@/app/services/trustScoreService';
 
 interface TaxiFinishModalProps {
   visible: boolean;
@@ -26,21 +28,15 @@ interface MemberData {
   uid: string;
   displayName: string;
   isPresent: boolean;
-  lastTaxiDate?: string; // ✨ 마지막으로 점수 받은 날짜 (YYYY-MM-DD)
 }
-
-// 오늘 날짜 구하는 함수 (YYYY-MM-DD)
-const getTodayString = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-};
 
 export default function TaxiFinishModal({ visible, partyId, members, onClose, onComplete }: TaxiFinishModalProps) {
   const [loading, setLoading] = useState(false);
   const [memberList, setMemberList] = useState<MemberData[]>([]);
   const auth = getAuth();
+  const currentUser = auth.currentUser;
 
-  // 1. 멤버 정보 및 '마지막 점수 받은 날짜' 불러오기
+  // 1. 멤버 정보 불러오기
   useEffect(() => {
     if (visible && members.length > 0) {
       fetchMembers();
@@ -55,23 +51,13 @@ export default function TaxiFinishModal({ visible, partyId, members, onClose, on
       try {
         const userSnap = await getDoc(doc(db, "users", uid));
         let name = "알 수 없음";
-        let lastDate = "";
 
         if (userSnap.exists()) {
           const d = userSnap.data();
-          lastDate = d.lastTaxiDate || ""; // 기존 기록 가져오기
-
-          if (d.department) {
-             let entryYear = "00";
-             if (d.email) {
-                 const prefix = d.email.split('@')[0];
-                 const two = prefix.substring(0, 2);
-                 if (!isNaN(Number(two)) && two.length === 2) entryYear = two;
-             }
-             name = `${entryYear}학번 ${d.department}`;
-          }
+          // ✨ [수정] displayId 우선 사용
+          name = d.displayId || "익명 사용자";
         }
-        list.push({ uid, displayName: name, isPresent: true, lastTaxiDate: lastDate }); 
+        list.push({ uid, displayName: name, isPresent: true }); 
       } catch (e) { console.error(e); }
     }
     setMemberList(list);
@@ -88,14 +74,8 @@ export default function TaxiFinishModal({ visible, partyId, members, onClose, on
     const presentCount = memberList.filter(m => m.isPresent).length;
     
     let message = `체크된 인원(${presentCount}명)은 신뢰도 +2점,\n노쇼 인원은 -7점 처리됩니다.\n`;
-    message += `(단, 하루 1회만 점수가 오릅니다.)\n\n`;
+    message += `(일일 3회 제한 및 7일 쿨타임이 적용됩니다.)\n\n`;
     
-    if (presentCount > 0) {
-        message += "✅ 정상 운행되어 본인(방장)도 +2점을 받습니다.";
-    } else {
-        message += "⚠️ 탑승자가 없어 본인(방장) 점수는 오르지 않습니다.";
-    }
-
     Alert.alert("최종 확정", message, [
         { text: "취소", style: "cancel" },
         { text: "확정", onPress: processResults }
@@ -103,62 +83,49 @@ export default function TaxiFinishModal({ visible, partyId, members, onClose, on
   };
 
   const processResults = async () => {
-    setLoading(true);
-    const currentUser = auth.currentUser;
     if (!currentUser) return;
-
-    const today = getTodayString(); // "2024-11-29"
+    setLoading(true);
 
     try {
-        const batch = writeBatch(db);
-
-        // (1) 참여자 점수 처리
-        let actualPassengers = 0;
-        
-        memberList.forEach(member => {
+        // (1) 참여자 점수 처리 (반복문으로 개별 처리)
+        // ✨ 중요: 택시는 다수이므로 batch 대신 하나씩 검사하고 업데이트합니다.
+        for (const member of memberList) {
             const userRef = doc(db, "users", member.uid);
             
             if (member.isPresent) {
-                // ✨ 출석했지만, 오늘 이미 점수를 받았다면? -> 점수 안 줌
-                if (member.lastTaxiDate === today) {
-                    console.log(`${member.displayName}님은 오늘 이미 점수를 받음.`);
-                } else {
-                    // 오늘 처음 -> 점수 주고, 날짜 갱신
-                    batch.update(userRef, { 
-                        trustScore: increment(2),
-                        lastTaxiDate: today 
-                    });
-                }
-                actualPassengers++;
-            } else {
-                // ✨ 노쇼는 하루 제한 없이 무조건 깎아버림 (참교육)
-                batch.update(userRef, { trustScore: increment(-7) });
-            }
-        });
+                // 👍 출석 -> 신뢰도 검사 수행
+                // "이 멤버(member.uid)가 나(currentUser.uid)로부터 점수를 받을 자격이 있나?"
+                const eligibility = await checkTrustScoreEligibility(member.uid, currentUser.uid, 'taxi');
 
-        // (2) 방장(나) 점수 처리
-        if (actualPassengers > 0) {
-            const myRef = doc(db, "users", currentUser.uid);
-            const mySnap = await getDoc(myRef);
-            
-            // 방장도 오늘 이미 받았는지 확인
-            if (mySnap.exists() && mySnap.data().lastTaxiDate === today) {
-                 console.log("방장도 오늘 이미 점수 받음.");
+                if (eligibility.allowed) {
+                    await updateDoc(userRef, { trustScore: increment(2) });
+                    await logTrustScoreTransaction(member.uid, currentUser.uid, 'taxi', 2);
+                    console.log(`[Taxi] ${member.displayName} 점수 지급 완료`);
+                } else {
+                    console.log(`[Taxi] ${member.displayName} 점수 지급 스킵 (${eligibility.reason})`);
+                }
+
             } else {
-                 batch.update(myRef, { 
-                     trustScore: increment(2),
-                     lastTaxiDate: today 
-                 });
+                // 👎 노쇼 -> 검사 없이 즉시 차감
+                await updateDoc(userRef, { trustScore: increment(-7) });
             }
         }
 
+        // (2) 방장(나) 점수 처리
+        // 방장은 '셀프'로 점수를 받습니다. (sourceUserId = 본인 ID)
+        // 이렇게 하면 '내가 나에게 주는' 기록이 남아서 일일 제한(3회)에 카운트됩니다.
+        const myRef = doc(db, "users", currentUser.uid);
+        const myEligibility = await checkTrustScoreEligibility(currentUser.uid, currentUser.uid, 'taxi');
+        
+        if (myEligibility.allowed) {
+             await updateDoc(myRef, { trustScore: increment(2) });
+             await logTrustScoreTransaction(currentUser.uid, currentUser.uid, 'taxi', 2);
+        }
+
         // (3) 파티 삭제
-        const partyRef = doc(db, "taxiParties", partyId);
-        batch.delete(partyRef); 
+        await deleteDoc(doc(db, "taxiParties", partyId));
 
-        await batch.commit();
-
-        Alert.alert("완료", "정산이 완료되었습니다!\n(하루 1회 제한이 적용되었습니다)");
+        Alert.alert("완료", "정산이 완료되었습니다!\n(어뷰징 방지 규칙에 따라 점수가 반영되었습니다)");
         onComplete();
         onClose();
     } catch (error) {
@@ -182,7 +149,7 @@ export default function TaxiFinishModal({ visible, partyId, members, onClose, on
             함께 탑승한 학우를 체크해주세요.{'\n'}
             <Text style={{color:'#0062ffff'}}>출석(+2)</Text> / <Text style={{color:'red'}}>노쇼(-7)</Text>
           </Text>
-          <Text style={styles.limitInfo}>* 신뢰도 상승은 하루 1회만 가능합니다.</Text>
+          <Text style={styles.limitInfo}>* 일일 3회 제한 / 동일인물 7일 쿨타임 적용</Text>
 
           {loading ? <ActivityIndicator size="large" color="#0062ffff" /> : (
             <FlatList
