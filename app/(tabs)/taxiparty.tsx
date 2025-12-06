@@ -1,3 +1,5 @@
+// app/(tabs)/taxiparty.tsx
+
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
@@ -28,6 +30,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
+import TaxiFinishModal from '../../components/TaxiFinishModal';
 import UserProfileModal from '../../components/UserProfileModal';
 
 interface TaxiParty {
@@ -129,7 +132,6 @@ const PartyItem = memo(({ item, currentUserId, onPressProfile, onJoin, onChat, o
                 </TouchableOpacity>
             </View>
             
-            {/* ✨ [수정] 개설자 정보 버튼: 바로 모달 열기 */}
             <TouchableOpacity 
                 style={styles.creatorInfoButton} 
                 onPress={() => onPressProfile(item.creatorId)} 
@@ -183,6 +185,9 @@ export default function TaxiPartyScreen() {
   const [parties, setParties] = useState<TaxiParty[]>([]);
   const [loading, setLoading] = useState(true);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
+  
+  // ✨ 운행 종료 모달 상태
+  const [finishParty, setFinishParty] = useState<TaxiParty | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, "taxiParties"), orderBy("createdAt", "desc"));
@@ -213,26 +218,8 @@ export default function TaxiPartyScreen() {
   };
 
   const handleFinishParty = (party: TaxiParty) => {
-    Alert.alert(
-      "운행 완료",
-      "목적지에 도착하셨나요?\n운행 종료를 누르면 파티가 목록에서 삭제됩니다.",
-      [
-        { text: "취소", style: "cancel" },
-        { 
-          text: "운행 종료", 
-          style: "default",
-          onPress: async () => {
-            try {
-              await deleteDoc(doc(db, "taxiParties", party.id));
-              Alert.alert("완료", "운행이 종료되었습니다.");
-            } catch (e) {
-              console.error(e);
-              Alert.alert("오류", "삭제 중 문제가 발생했습니다.");
-            }
-          }
-        }
-      ]
-    );
+    // 바로 모달을 띄움
+    setFinishParty(party);
   };
 
   const handleJoinParty = async (party: TaxiParty) => {
@@ -279,7 +266,6 @@ export default function TaxiPartyScreen() {
     } catch (e) { console.error(e); }
   };
 
-  // ✨ [최적화] currentUserId 전달 (객체 아님)
   const renderPartyItem = useCallback(({ item }: { item: TaxiParty }) => (
       <PartyItem 
         item={item} 
@@ -290,7 +276,7 @@ export default function TaxiPartyScreen() {
         onFinish={handleFinishParty} 
         onDelete={handleDeleteParty}
       />
-  ), [user]); // user가 바뀌면(로그인/아웃) 재생성
+  ), [user]);
 
   return (
     <View style={[styles.container]}>
@@ -314,6 +300,7 @@ export default function TaxiPartyScreen() {
         />
       )}
 
+      {/* ✨ FAB 위치 수정됨 (안드로이드에서도 탭바 피함) */}
       <TouchableOpacity style={styles.fab} onPress={handleCreateParty}>
         <Ionicons name="add" size={32} color="white" />
       </TouchableOpacity>
@@ -323,6 +310,17 @@ export default function TaxiPartyScreen() {
         userId={profileUserId}
         onClose={() => setProfileUserId(null)}
       />
+
+      {/* ✨ 운행 종료 모달 연결 */}
+      {finishParty && (
+        <TaxiFinishModal
+            visible={!!finishParty}
+            partyId={finishParty.id}
+            members={finishParty.currentMembers.filter(uid => uid !== user?.uid)} 
+            onClose={() => setFinishParty(null)}
+            onComplete={() => setFinishParty(null)}
+        />
+      )}
     </View>
   );
 }
@@ -429,7 +427,6 @@ const styles = StyleSheet.create({
   slotContainer: { flexDirection: 'row', alignItems: 'center' },
   slotText: { fontSize: 12, color: '#444', fontWeight: 'bold', marginLeft: 6 },
 
-  // ✨ [수정] 개설자 정보 버튼 스타일 (통일됨)
   creatorInfoButton: {
     backgroundColor: '#f8f9fa',
     paddingVertical: 6,
@@ -494,7 +491,7 @@ const styles = StyleSheet.create({
 
   fab: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 100 : 24,
+    bottom: Platform.OS === 'ios' ? 100 : 90, // ✨ 안드로이드 높이 수정 (탭바 회피)
     right: 20,
     width: 60,
     height: 60,

@@ -1,3 +1,5 @@
+// app/(tabs)/timetable.tsx
+
 import { Picker } from '@react-native-picker/picker';
 import Checkbox from 'expo-checkbox';
 import * as Notifications from 'expo-notifications';
@@ -42,10 +44,9 @@ interface PickerItemData {
 
 const daysOfWeek = ['월', '화', '수', '목', '금']; 
 
-// ✨ [수정 1] 시간 옵션을 9:30 ~ 18:30, 1시간 단위로 생성
+// 시간 옵션: 09:30 ~ 18:30 (1시간 간격)
 const generateTimeOptions = () => {
   const options = [];
-  // 9.5(09:30) 부터 18.5(18:30) 까지 1시간 간격
   const startValue = 9.5; 
   const endValue = 18.5;
 
@@ -55,12 +56,10 @@ const generateTimeOptions = () => {
     const label = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     options.push({ label, value: t });
   }
-  
   return options;
 };
 
 const pickerTimeOptions = generateTimeOptions();
-// 그리드 배경은 9시, 10시... 정각 기준으로 그림 (배치 시 오차 계산됨)
 const gridHours = Array.from({ length: 10 }, (_, i) => 9 + i); 
 
 const parseTime = (timeString: string) => {
@@ -177,8 +176,6 @@ const TimetableScreen: React.FC = () => {
   const [location, setLocation] = useState('');
   
   const [selectedDay, setSelectedDay] = useState<string>('월');
-  
-  // 기본값 설정: 09:30 시작, 10:30 종료
   const [selectedStartTime, setSelectedStartTime] = useState<number>(9.5);
   const [selectedEndTime, setSelectedEndTime] = useState<number>(10.5);
 
@@ -191,6 +188,16 @@ const TimetableScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const auth = getAuth();
   const user = auth.currentUser;
+
+  // ✨ 앱 시작 시 알림 권한 요청
+  useEffect(() => {
+    (async () => {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('알림 권한이 거부되었습니다.');
+      }
+    })();
+  }, []);
 
   const fetchTimetable = async () => {
     if (!user) { setLoading(false); return; }
@@ -218,38 +225,44 @@ const TimetableScreen: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // ✨ [핵심] 10분 전 알림 예약 함수 (타입 에러 해결)
   const scheduleClassNotification = async (day: string, startTime: number, className: string) => {
-    const dayMap: { [key: string]: number } = { '월': 2, '화': 3, '수': 4, '목': 5, '금': 6 };
-    const weekday = dayMap[day.replace('요일', '')];
+    // 1. 요일 변환 (Expo: 1=일요일 ~ 7=토요일)
+    const dayMap: { [key: string]: number } = { '일': 1, '월': 2, '화': 3, '수': 4, '목': 5, '금': 6, '토': 7 };
+    const dayKey = day.replace('요일', '');
+    const weekday = dayMap[dayKey];
     
     if (!weekday) return;
 
-    const hour = Math.floor(startTime);
-    const minute = Math.round((startTime % 1) * 60);
+    // 2. 시간 계산 (10분 전)
+    const startHour = Math.floor(startTime);
+    const startMinute = Math.round((startTime % 1) * 60);
 
-    let triggerHour = hour;
-    let triggerMinute = minute - 10;
+    let triggerHour = startHour;
+    let triggerMinute = startMinute - 10;
+
     if (triggerMinute < 0) {
         triggerMinute += 60;
         triggerHour -= 1;
     }
 
+    // 3. 알림 예약 실행
     try {
         await Notifications.scheduleNotificationAsync({
             content: {
                 title: "수업 10분 전! ⏰",
-                body: className + " 수업이 곧 시작됩니다.",
+                body: `${className} 수업이 곧 시작됩니다. 강의실로 이동하세요!`,
                 sound: true,
             },
-            // @ts-ignore
+            // ✨ [수정] as any를 사용하여 TypeScript 에러를 우회함
             trigger: {
-                weekday: weekday,
+                weekday: weekday, // 월(2)~금(6)
                 hour: triggerHour,
                 minute: triggerMinute,
-                seconds: 0,
-                repeats: true,
-            },
+                repeats: true, // 매주 반복
+            } as any,
         });
+        console.log(`[알림 예약 성공] ${day}요일 ${triggerHour}:${triggerMinute}`);
     } catch (e) {
         console.log("알림 예약 실패:", e);
     }
@@ -268,33 +281,28 @@ const TimetableScreen: React.FC = () => {
     setIsAdding(false);
   };
 
-  // ✨ [추가 2] 시간 중복 확인 함수
   const checkTimeConflict = (day: string, start: number, end: number, excludeId: string | null) => {
     const dayShort = day.replace('요일', '');
 
     for (const item of timetable) {
-      // 온라인 강의나 현재 수정 중인 강의는 제외
       if (item.isOnline) continue;
       if (excludeId && item.id === excludeId) continue;
 
       const parsed = parseTime(item.time);
       if (!parsed) continue;
 
-      // 같은 요일인지 확인
       if (parsed.day === dayShort) {
-        // 시간 겹침 로직: (새 수업 시작시간 < 기존 수업 종료시간) AND (새 수업 종료시간 > 기존 수업 시작시간)
         if (start < parsed.end && end > parsed.start) {
-          return true; // 중복 발생
+          return true; 
         }
       }
     }
-    return false; // 중복 없음
+    return false; 
   };
 
   const handleAddEntry = async () => {
     if (!courseName || !user) { Alert.alert('오류', '과목명을 입력해주세요.'); return; }
     
-    // 종료 시간이 시작 시간보다 같거나 빠르면 오류
     if (!isOnline && selectedStartTime >= selectedEndTime) { 
         Alert.alert('오류', '종료 시간은 시작 시간보다 늦어야 합니다.'); 
         return; 
@@ -302,7 +310,6 @@ const TimetableScreen: React.FC = () => {
 
     const dayToSave = selectedDay.endsWith('요일') ? selectedDay : `${selectedDay}요일`;
 
-    // ✨ 중복 체크 실행
     if (!isOnline) {
         const hasConflict = checkTimeConflict(dayToSave, selectedStartTime, selectedEndTime, currentEditId);
         if (hasConflict) {
@@ -340,11 +347,12 @@ const TimetableScreen: React.FC = () => {
           courseName, professor, location: finalLocation, time: formattedTime, userId: user.uid, isOnline, color: randomColor
         });
         
+        // ✨ 저장 성공 후 알림 예약
         if (!isOnline) {
             await scheduleClassNotification(dayToSave, selectedStartTime, courseName);
-            Alert.alert('성공', '추가되고 알림이 설정되었습니다! ⏰');
+            Alert.alert('성공', '강의가 추가되고 알림이 설정되었습니다! ⏰');
         } else {
-            Alert.alert('성공', '추가되었습니다!');
+            Alert.alert('성공', '온라인 강의가 추가되었습니다!');
         }
         
         resetForm(); 
@@ -427,12 +435,9 @@ const TimetableScreen: React.FC = () => {
                   const parsedTime = parseTime(item.time);
                   
                   if (parsedTime && parsedTime.day === day) {
-                    // 시작 시간이 현재 hour 구간 안에 있거나 (예: 9.5는 9구간에 포함)
-                    // 정확히 표현하기 위해 시작시간의 정수부분이 현재 hour와 같은지 확인
                     if (Math.floor(parsedTime.start) === hour) {
                       const durationInHours = parsedTime.end - parsedTime.start;
                       const blockHeight = durationInHours * ROW_HEIGHT;
-                      // 9시 기준: 9.5시 시작이면 0.5 * height 만큼 아래로
                       const topOffset = (parsedTime.start - hour) * ROW_HEIGHT;
 
                       const backgroundColor = item.color || getColorByString(item.courseName);
@@ -574,7 +579,6 @@ const TimetableScreen: React.FC = () => {
                     <CustomPicker
                       selectedValue={selectedEndTime}
                       onValueChange={setSelectedEndTime}
-                      // 시작 시간보다 뒤에 있는 시간만 보여줌
                       items={pickerTimeOptions.filter(o => o.value > selectedStartTime)}
                     />
                   </View>
