@@ -187,6 +187,16 @@ export default function LoginScreen() {
                                 >
                                     계정이 없으신가요? 회원가입
                                 </Button>
+
+                                <Button
+                                  mode="text"
+                                  onPress={() => router.push('/(auth)/ForgotPasswordScreen')}
+                                  style={{ marginTop: 5 }} // 간격 조절
+                                  textColor="#555" // 회원가입보다 덜 강조되게 회색 계열 사용
+                                  labelStyle={{ fontSize: 14, fontWeight: '500' }}
+                                >
+                                  비밀번호를 잊으셨나요? 비밀번호 찾기
+                                </Button>
                             </View>
                         </View>
                     </SafeAreaView>
