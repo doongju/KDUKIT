@@ -3,48 +3,72 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform, View } from 'react-native';
+import { Alert, Platform, View } from 'react-native'; // ✨ Alert 추가
 
 // ✨ Firebase 관련 추가
 import { getAuth } from 'firebase/auth';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
 export default function TabLayout() {
-  const activeColor = '#0062ffff'; // 브랜드 컬러
+  const activeColor = '#0062ffff'; 
   const inactiveColor = '#999';
 
   const auth = getAuth();
   const user = auth.currentUser;
 
-  // ✨ 전체 안 읽은 메시지 수 상태 관리
   const [totalUnreadCount, setTotalUnreadCount] = useState(0);
+  // ✨ 정지 여부 상태 관리
+  const [isSuspended, setIsSuspended] = useState(false);
 
-  // ✨ 실시간 뱃지 카운트 로직
   useEffect(() => {
     if (!user) {
         setTotalUnreadCount(0);
         return;
     }
 
+    // 1. 유저 정보 실시간 감시 (정지 당하면 즉시 반영)
+    const userUnsub = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            // isSuspended가 true거나 reportCount가 3 이상이면 정지 처리
+            const suspended = (data.isSuspended === true) || ((data.reportCount || 0) >= 3);
+            setIsSuspended(suspended);
+        }
+    });
+
+    // 2. 채팅 뱃지 카운트
     const q = query(
       collection(db, 'chatRooms'),
       where('members', 'array-contains', user.uid)
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const chatUnsub = onSnapshot(q, (snapshot) => {
       let total = 0;
       snapshot.forEach((doc) => {
         const data = doc.data();
-        // 내 UID로 된 안 읽은 갯수가 있으면 더하기
         const myCount = data.unreadCounts?.[user.uid] || 0;
         total += myCount;
       });
       setTotalUnreadCount(total);
     });
 
-    return () => unsubscribe();
+    return () => {
+        userUnsub();
+        chatUnsub();
+    };
   }, [user]);
+
+  // ✨ [핵심] 탭 누를 때 정지된 유저인지 검사하는 함수
+  const handleRestrictedTabPress = (e: any) => {
+      if (isSuspended) {
+          e.preventDefault(); // 탭 이동 강제 차단
+          Alert.alert(
+              "🚫 이용 제한", 
+              "누적된 신고로 인해 서비스 이용이 제한되었습니다.\n(셔틀 및 시간표만 이용 가능합니다)"
+          );
+      }
+  };
 
   return (
     <Tabs
@@ -73,7 +97,7 @@ export default function TabLayout() {
         },
       }}
     >
-      {/* 1. [시간표] 탭 */}
+      {/* 1. [시간표] - 허용 */}
       <Tabs.Screen
         name="timetable"
         options={{
@@ -84,7 +108,7 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 2. [셔틀] 탭 */}
+      {/* 2. [셔틀] - 허용 */}
       <Tabs.Screen
         name="shuttle"
         options={{
@@ -95,9 +119,10 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 3. [홈] 탭 - 커스텀 버튼 디자인 유지 */}
+      {/* 3. [홈] - 🚫 차단 (커뮤니티 메인) */}
       <Tabs.Screen
         name="explore"
+        listeners={{ tabPress: handleRestrictedTabPress }} // ✨ 클릭 시 검사
         options={{
           title: '홈',
           tabBarLabelStyle: { display: 'none' },
@@ -108,10 +133,11 @@ export default function TabLayout() {
                 width: 66,
                 height: 66,
                 borderRadius: 33,
-                backgroundColor: '#0062ffff',
+                // 정지 상태면 회색으로 표시 (시각적 효과)
+                backgroundColor: isSuspended ? '#ccc' : '#0062ffff',
                 justifyContent: 'center',
                 alignItems: 'center',
-                shadowColor: '#0062ffff',
+                shadowColor: isSuspended ? '#ccc' : '#0062ffff',
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.4,
                 shadowRadius: 5,
@@ -124,13 +150,14 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 4. [채팅] 탭 - ✨ 여기에 뱃지 추가됨! */}
+      {/* 4. [채팅] - 🚫 차단 */}
       <Tabs.Screen
         name="chatlist"
+        listeners={{ tabPress: handleRestrictedTabPress }} // ✨ 클릭 시 검사
         options={{
           title: '채팅',
-          // ✨ 숫자가 0보다 클 때만 빨간 뱃지 표시
-          tabBarBadge: totalUnreadCount > 0 ? totalUnreadCount : undefined,
+          // 정지 안 된 사람만 뱃지 보여줌
+          tabBarBadge: (!isSuspended && totalUnreadCount > 0) ? totalUnreadCount : undefined,
           tabBarBadgeStyle: { 
               backgroundColor: '#ff3b30', 
               fontSize: 10,
@@ -144,7 +171,7 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 5. [내 정보] 탭 */}
+      {/* 5. [내 정보] - 허용 */}
       <Tabs.Screen
         name="profile"
         options={{

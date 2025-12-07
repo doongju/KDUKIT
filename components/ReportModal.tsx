@@ -1,19 +1,18 @@
 // components/ReportModal.tsx
 
 import { Ionicons } from '@expo/vector-icons';
-// ✨ getDocs, query, where 추가됨
 import { addDoc, collection, doc, getDoc, getDocs, increment, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 
@@ -49,8 +48,7 @@ export default function ReportModal({ visible, targetUserId, targetUserName, onC
       const currentUser = auth.currentUser;
       if (!currentUser) return;
 
-      // ✨ [핵심 추가] 중복 신고 방지 로직
-      // 내가 이 사람을 신고한 적이 있는지 DB 조회
+      // 1. 중복 신고 방지
       const checkQuery = query(
         collection(db, 'reports'),
         where('reporterId', '==', currentUser.uid),
@@ -59,16 +57,45 @@ export default function ReportModal({ visible, targetUserId, targetUserName, onC
       
       const checkSnap = await getDocs(checkQuery);
       
-      // 이미 신고 내역이 있다면 차단
       if (!checkSnap.empty) {
-        Alert.alert("신고 불가", "이미 신고한 사용자입니다.\n중복 신고는 불가능합니다.");
+        Alert.alert("신고 불가", "이미 신고한 사용자입니다.");
         setLoading(false);
         return;
       }
 
-      // --- 이하 기존 신고 로직 실행 ---
+      const targetUserRef = doc(db, "users", targetUserId);
+      
+      // 2. 현재 신고 횟수 가져오기
+      const targetSnap = await getDoc(targetUserRef);
+      
+      if (targetSnap.exists()) {
+          const userData = targetSnap.data();
+          const currentCount = userData.reportCount || 0;
+          const nextCount = currentCount + 1; // 이번에 신고하면 될 숫자
 
-      // 1. 신고 내역 저장
+          const updates: any = {
+              reportCount: increment(1) 
+          };
+
+          // ✨ [확인용] 개발 중에만 띄우는 알림 (테스트 후 주석 처리하세요)
+          console.log(`현재 ${currentCount}회 -> 이번 신고로 ${nextCount}회가 됩니다.`);
+
+          // 3. 3회 이상이면 무조건 정지 (>= 3)
+          if (nextCount >= 3) {
+              updates.isSuspended = true;
+              
+              // 정지 시간 기록 (최초 정지 시에만)
+              if (!userData.isSuspended) {
+                  updates.suspendedAt = serverTimestamp();
+              }
+              console.log("🚨 3회 누적! 정지 처리 실행됨");
+          }
+
+          // 4. DB 반영
+          await updateDoc(targetUserRef, updates);
+      }
+
+      // 5. 신고 내역 저장
       await addDoc(collection(db, "reports"), {
         reporterId: currentUser.uid,
         targetId: targetUserId,
@@ -78,28 +105,7 @@ export default function ReportModal({ visible, targetUserId, targetUserName, onC
         status: 'pending'
       });
 
-      // 2. 신고 카운트 증가
-      const targetUserRef = doc(db, "users", targetUserId);
-      await updateDoc(targetUserRef, {
-        reportCount: increment(1)
-      });
-
-      // 3. 자동 처벌 (3회 누적 시 점수 차감)
-      const targetSnap = await getDoc(targetUserRef);
-      if (targetSnap.exists()) {
-        const userData = targetSnap.data();
-        const currentReports = userData.reportCount || 0;
-
-        if (currentReports % 3 === 0) {
-             // 점수 필드가 없으면 50점 기준 차감, 있으면 기존 점수 차감
-             const currentScore = userData.trustScore !== undefined ? userData.trustScore : 50;
-             await updateDoc(targetUserRef, {
-                 trustScore: currentScore - 5
-             });
-        }
-      }
-
-      Alert.alert("신고 접수", "신고가 정상적으로 접수되었습니다.");
+      Alert.alert("신고 접수", "정상적으로 접수되었습니다.");
       setDescription("");
       onClose();
 
@@ -146,8 +152,7 @@ export default function ReportModal({ visible, targetUserId, targetUserName, onC
             />
             
             <Text style={styles.warning}>
-                * 허위 신고 시 불이익을 받을 수 있습니다.
-                {'\n'}* 동일인에 대한 중복 신고는 불가능합니다.
+                * 3회 이상 신고 누적 시 해당 사용자는 즉시 이용이 정지됩니다.
             </Text>
           </ScrollView>
 
