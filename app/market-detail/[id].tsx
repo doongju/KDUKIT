@@ -13,7 +13,8 @@ import {
   setDoc,
   updateDoc
 } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+// ✨ [수정] useRef 추가
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -34,6 +35,7 @@ import { db } from '../../firebaseConfig';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
+// ... (인터페이스 생략 - 기존과 동일) ...
 interface MarketPost {
   id: string;
   title: string;
@@ -59,9 +61,14 @@ export default function MarketDetailScreen() {
 
   const [post, setPost] = useState<MarketPost | null>(null);
   const [loading, setLoading] = useState(true);
-  
-  // ✨ [수정 1] 삭제 진행 중인지 확인하는 상태 추가
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // UI 표시용 상태
+  const [isNavigating, setIsNavigating] = useState(false);
+  
+  // ✨ [핵심 수정] 즉시 차단을 위한 Ref 추가
+  // useState는 렌더링 딜레이가 있지만, ref는 즉시 값이 바뀝니다.
+  const isNavigatingRef = useRef(false);
 
   const [isImageViewerVisible, setIsImageViewerVisible] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -70,28 +77,23 @@ export default function MarketDetailScreen() {
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
   const [myWishlist, setMyWishlist] = useState<string[]>([]);
 
-  // 1. 게시글 데이터 실시간 로드
+  // ... (useEffect 로직들은 기존과 동일) ...
   useEffect(() => {
     if (!id) return;
     const docRef = doc(db, 'marketPosts', id as string);
-    
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      // ✨ [수정 2] 내가 삭제 중이라면 스냅샷 로직(알림 및 자동 뒤로가기) 무시
       if (isDeleting) return;
-
       if (docSnap.exists()) {
         setPost({ id: docSnap.id, ...docSnap.data() } as MarketPost);
       } else {
-        // 내가 아닌 다른 이유로 삭제되었을 때만 작동
         Alert.alert("알림", "삭제된 게시글입니다.");
         router.back();
       }
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [id, router, isDeleting]); // 의존성 배열에 isDeleting 추가
+  }, [id, router, isDeleting]);
 
-  // 2. 위시리스트 로드
   useEffect(() => {
     if (!currentUserId) return;
     const userRef = doc(db, 'users', currentUserId);
@@ -101,7 +103,7 @@ export default function MarketDetailScreen() {
     return () => unsubscribe();
   }, [currentUserId]);
 
-  const handleToggleWish = async () => {
+  const handleToggleWish = async () => { /* 기존 코드 동일 */
     if (!currentUser || !post) return;
     const userRef = doc(db, 'users', currentUser.uid);
     const isWished = myWishlist.includes(post.id);
@@ -111,28 +113,24 @@ export default function MarketDetailScreen() {
     } catch (e) { console.error(e); }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = async () => { /* 기존 코드 동일 */
     Alert.alert("삭제", "정말 삭제하시겠습니까?", [
       { text: "취소", style: "cancel" },
       { text: "삭제", style: "destructive", onPress: async () => {
           try {
-            // ✨ [수정 3] 삭제 플래그 켜기 (스냅샷 무시)
             setIsDeleting(true);
-            
             await deleteDoc(doc(db, "marketPosts", id as string));
-            
-            // ✨ [수정 4] 게시판 목록으로 이동 (뒤로가기 스택 꼬임 방지)
             router.back();
           } catch (error) { 
             console.error(error);
-            setIsDeleting(false); // 실패 시 플래그 끄기
+            setIsDeleting(false);
             Alert.alert("오류", "삭제 실패"); 
           }
       }}
     ]);
   };
 
-  const handleEdit = () => {
+  const handleEdit = () => { /* 기존 코드 동일 */
     if (!post) return;
     router.push({
       pathname: '/create-market',
@@ -147,7 +145,7 @@ export default function MarketDetailScreen() {
     });
   };
 
-  const handleStatusChange = async () => {
+  const handleStatusChange = async () => { /* 기존 코드 동일 */
     if (!post) return;
     if (post.status === '판매완료') {
       Alert.alert("변경 불가", "이미 거래가 확정된 상품입니다.");
@@ -171,13 +169,19 @@ export default function MarketDetailScreen() {
   };
 
   const handleChat = async () => {
-    if (!currentUser || !post || !currentUserId) return;
+    // ✨ [수정] Ref를 사용하여 동기적으로 즉시 체크
+    if (!currentUser || !post || !currentUserId || isNavigatingRef.current) return;
     
     if (post.creatorId === currentUserId) return Alert.alert("본인 상품", "본인 상품에는 채팅할 수 없습니다.");
     
+    // ✨ [수정] 즉시 잠금 (Ref + State)
+    isNavigatingRef.current = true; // JS 레벨에서 즉시 차단
+    setIsNavigating(true);          // UI 비활성화 (리렌더링 필요)
+
     const sortedUids = [post.creatorId, currentUserId].sort();
     const chatRoomId = `dm_${post.id}_${sortedUids.join('_')}`;
     const chatRoomRef = doc(db, "chatRooms", chatRoomId);
+    
     try {
       const snap = await getDoc(chatRoomRef);
       if (!snap.exists()) {
@@ -194,11 +198,25 @@ export default function MarketDetailScreen() {
       } else {
         await updateDoc(chatRoomRef, { members: arrayUnion(post.creatorId, currentUserId) });
       }
+      
       router.push(`/chat/${chatRoomId}`);
-    } catch { Alert.alert("오류", "채팅방 연결 실패"); }
+
+      // ✨ [수정] 화면 전환 애니메이션 시간(약 500ms~1000ms) 동안 잠금을 유지
+      // finally에서 즉시 풀지 않고 지연시켜서 풉니다.
+      setTimeout(() => {
+        isNavigatingRef.current = false;
+        setIsNavigating(false);
+      }, 1500); // 1.5초 뒤에 해제
+
+    } catch { 
+        Alert.alert("오류", "채팅방 연결 실패");
+        // 에러 시에는 즉시 해제해줘야 함
+        isNavigatingRef.current = false;
+        setIsNavigating(false);
+    }
   };
 
-  const handleScroll = (event: any) => {
+  const handleScroll = (event: any) => { /* 기존 코드 동일 */
       const slideSize = event.nativeEvent.layoutMeasurement.width;
       const index = event.nativeEvent.contentOffset.x / slideSize;
       const roundIndex = Math.round(index);
@@ -260,7 +278,6 @@ export default function MarketDetailScreen() {
                             </TouchableOpacity>
                         )}
                     />
-                    
                     {postImages.length > 1 && (
                         <View style={styles.pageIndicator}>
                             <Text style={styles.pageIndicatorText}>
@@ -322,16 +339,22 @@ export default function MarketDetailScreen() {
             </View>
         ) : (
             <TouchableOpacity 
-                style={[styles.chatBtn, post.status === '판매완료' && {backgroundColor:'#ccc'}]} 
+                // ✨ [수정] Navigating 중이면 비활성화 스타일
+                style={[styles.chatBtn, (post.status === '판매완료' || isNavigating) && {backgroundColor:'#ccc'}]} 
                 onPress={handleChat}
-                disabled={post.status === '판매완료'}
+                // ✨ [수정] Navigating 중이면 버튼 비활성화
+                disabled={post.status === '판매완료' || isNavigating}
             >
-                <Text style={styles.chatBtnText}>{post.status === '판매완료' ? '거래 완료' : '채팅으로 거래하기'}</Text>
+                {/* ✨ [수정] 로딩 중이면 인디케이터 표시 */}
+                {isNavigating ? (
+                     <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                     <Text style={styles.chatBtnText}>{post.status === '판매완료' ? '거래 완료' : '채팅으로 거래하기'}</Text>
+                )}
             </TouchableOpacity>
         )}
       </View>
 
-      {/* 이미지 뷰어 */}
       {postImages.length > 0 && (
         <ImageView
           images={postImages.map(uri => ({ uri }))}
@@ -343,10 +366,8 @@ export default function MarketDetailScreen() {
         />
       )}
 
-      {/* 프로필 모달 */}
       <UserProfileModal visible={!!profileUserId} userId={profileUserId} onClose={() => setProfileUserId(null)} />
 
-      {/* 리뷰 모달 (판매자용) */}
       {currentUserId && (
         <ReviewModal
           visible={reviewModalVisible}
