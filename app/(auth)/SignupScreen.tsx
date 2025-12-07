@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import { createUserWithEmailAndPassword } from "firebase/auth";
@@ -18,8 +19,8 @@ import {
   View,
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
-// ✨ 토큰 함수 import
 import { registerForPushNotificationsAsync } from '../../utils/registerForPushNotificationsAsync';
+
 
 const DEPARTMENTS = [
     '학과 선택', 
@@ -57,7 +58,9 @@ export default function SignupScreen() {
   const [confirmPw, setConfirmPw] = useState("");
   const [name, setName] = useState("");
   const [nickname, setNickname] = useState("");
-
+  
+  const [isAgree, setIsAgree] = useState(false); 
+  
   const [loading, setLoading] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
@@ -84,6 +87,11 @@ export default function SignupScreen() {
     };
   }, [codeSent, resendTimer, isVerified]);
 
+  const handleViewPolicy = () => {
+      Alert.alert("개인정보 처리 방침", "이곳에 개인정보 수집 및 이용 목적, 항목, 보유 및 이용 기간 등의 상세 약관 내용이 들어갑니다.");
+  }
+
+
   const validateInitialInputs = () => {
     const nameRegex = /^[가-힣\s]{1,}$/; 
     if (!nameRegex.test(name) || name.trim().length === 0) {
@@ -104,10 +112,25 @@ export default function SignupScreen() {
         Alert.alert("오류", "이메일 ID를 입력해주세요.");
         return false;
     }
+    
+    if (!isAgree) {
+        Alert.alert("동의 필요", "개인정보 수집 및 이용에 동의해야 회원가입이 가능합니다.");
+        return false;
+    }
+
     return true;
   };
 
   const requestVerification = async () => {
+    // 인증 요청 시에는 동의 여부를 체크하지 않음 (가입 버튼 누를 때 체크)
+    // 하지만 validateInitialInputs에 포함되어 있으므로, 
+    // 여기서는 isAgree 체크를 빼고 싶은 경우 별도 검증 함수를 만들거나 
+    // validateInitialInputs를 수정해야 합니다. 
+    // 일단 현재 구조상 인증 요청 시에도 동의를 요구하게 됩니다.
+    // 사용자 경험상 인증 먼저 하고 나중에 동의해도 되지만, 
+    // 코드가 복잡해지지 않게 그대로 두거나, 
+    // 필요하다면 requestVerification용 검증 로직을 분리해 드릴 수 있습니다.
+    // 여기서는 일단 기존 로직 유지 (동의 안 하면 인증번호도 안 옴) -> 이게 더 깔끔할 수 있습니다.
     if (!validateInitialInputs()) return;
 
     setSendingCode(true); 
@@ -190,13 +213,11 @@ export default function SignupScreen() {
       const userCredential = await createUserWithEmailAndPassword(auth, fullEmail, password);
       const userId = userCredential.user.uid;
 
-      // ✨ [추가] 토큰 발급
       let token = null;
       try {
          token = await registerForPushNotificationsAsync();
       } catch(e) { console.log("토큰 발급 실패:", e); }
 
-      // ✨ [수정] 회원 정보 DB 저장 (토큰 포함)
       await setDoc(doc(db, "users", userId), {
         name: name.trim(),
         nickname: nickname.trim(),
@@ -416,10 +437,29 @@ export default function SignupScreen() {
             />
         </View>
 
+        {/* ✨ [이동 완료] 개인정보 동의 체크박스 위치 변경 (맨 아래) */}
+        <View style={styles.policyContainer}>
+          <TouchableOpacity 
+            style={styles.policyCheckboxRow}
+            onPress={() => setIsAgree(!isAgree)}
+          >
+            <Ionicons 
+                name={isAgree ? "checkmark-circle" : "ellipse-outline"} 
+                size={22} 
+                color={isAgree ? "#0062ffff" : "#ccc"} 
+                style={styles.checkboxIcon}
+            />
+            <Text style={styles.policyText}>개인정보 수집 및 이용 동의 (필수)</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleViewPolicy} style={styles.policyViewButton}>
+             <Text style={styles.policyViewText}>약관 보기</Text>
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity
-          style={[styles.button, (loading || !isVerified) && { backgroundColor: "#ccc" }]}
+          style={[styles.button, (loading || !isVerified || !isAgree) && { backgroundColor: "#ccc" }]}
           onPress={handleSignup}
-          disabled={loading || !isVerified}
+          disabled={loading || !isVerified || !isAgree}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
@@ -591,4 +631,34 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
+  policyContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 25,
+    paddingHorizontal: 5,
+    marginTop: 10, // ✨ 위쪽 간격 살짝 추가
+  },
+  policyCheckboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkboxIcon: {
+      marginRight: 6
+  },
+  policyText: {
+    fontSize: 15,
+    color: '#444',
+    fontWeight: '500',
+  },
+  policyViewButton: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  policyViewText: {
+    fontSize: 14,
+    color: '#0062ffff',
+    textDecorationLine: 'underline',
+    fontWeight: '600',
+  }
 });
