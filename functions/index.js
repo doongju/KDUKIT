@@ -75,7 +75,7 @@ exports.sendVerificationCode = functions.https.onCall(async (data, context) => {
 });
 
 // ==========================================
-// 2. 채팅 알림
+// 2. 채팅 알림 (수정됨: 뱃지 카운트 기능 추가)
 // ==========================================
 exports.sendChatNotification = functions.firestore
   .document("chatRooms/{chatRoomId}/messages/{messageId}")
@@ -86,7 +86,9 @@ exports.sendChatNotification = functions.firestore
     const messageText = messageData.text;
 
     try {
-      const roomSnap = await admin.firestore().collection("chatRooms").doc(chatRoomId).get();
+      // 방 정보 가져오기
+      const roomRef = admin.firestore().collection("chatRooms").doc(chatRoomId);
+      const roomSnap = await roomRef.get();
       const roomData = roomSnap.data();
       if (!roomData) return;
 
@@ -94,6 +96,22 @@ exports.sendChatNotification = functions.firestore
       const receiverIds = members.filter((uid) => uid !== senderId);
       if (receiverIds.length === 0) return;
 
+      // ✨ [추가된 로직] 상대방들의 안 읽은 갯수(unreadCounts) +1 증가시키기
+      const updateData = {
+          lastMessage: messageText, // 목록에 미리보기용
+          lastMessageTimestamp: admin.firestore.FieldValue.serverTimestamp() // 정렬용 시간 업데이트
+      };
+      
+      receiverIds.forEach(uid => {
+          // unreadCounts 맵 안에 있는 '상대방UID' 키의 값을 1 늘림
+          updateData[`unreadCounts.${uid}`] = admin.firestore.FieldValue.increment(1);
+      });
+
+      // DB 업데이트 실행 (이게 있어야 빨간 숫자가 올라감!)
+      await roomRef.update(updateData);
+
+
+      // --- [여기서부터는 기존 푸시 알림 로직과 동일] ---
       const messagesToSend = [];
       
       for (const uid of receiverIds) {
