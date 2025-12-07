@@ -1,12 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-<<<<<<< HEAD
-import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
-=======
 // ✨ [수정] arrayUnion, arrayRemove 추가됨
 import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
->>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -38,13 +34,10 @@ interface ChatRoom {
   members: string[];
   name: string;
   type?: string;
+  lastReadBy: { [uid: string]: Timestamp | null };
 }
 
-<<<<<<< HEAD
-// 아이콘 스타일
-=======
 // ✨ [최적화] 아이콘 스타일 가져오는 함수
->>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
 const getChatIconStyle = (type: string | undefined) => {
   let iconName: keyof typeof Ionicons.glyphMap = "chatbubble-ellipses";
   let iconColor = "#0062ffff";
@@ -228,10 +221,7 @@ export default function ChatRoomScreen() {
     }
   }, [messages.length]);
 
-<<<<<<< HEAD
-=======
   // 키보드 리스너
->>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
   useEffect(() => {
     const showSub = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
@@ -247,8 +237,6 @@ export default function ChatRoomScreen() {
     return () => { showSub.remove(); hideSub.remove(); };
   }, [scrollToBottom]);
 
-<<<<<<< HEAD
-=======
   // ✨ [수정 2] 실시간 읽음 처리 (lastReadBy + 뱃지 초기화 동시 처리)
   // 메시지가 새로 오거나 화면이 갱신될 때마다 실행
   const updateLastRead = useCallback(async () => {
@@ -262,7 +250,6 @@ export default function ChatRoomScreen() {
   }, [chatRoomId, currentUserId]);
 
   // 채팅방 정보 로드
->>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
   useEffect(() => {
     if (!chatRoomId) return;
     const unsub = onSnapshot(doc(db, 'chatRooms', chatRoomId), (docSnap) => {
@@ -276,10 +263,7 @@ export default function ChatRoomScreen() {
     return () => unsub();
   }, [chatRoomId, navigation]);
 
-<<<<<<< HEAD
-=======
   // 멤버 이름 로드
->>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
   useEffect(() => {
     if (!chatRoom?.members) return;
     
@@ -314,8 +298,6 @@ export default function ChatRoomScreen() {
     fetchMissingNames();
   }, [chatRoom?.members]);
 
-<<<<<<< HEAD
-=======
   // ✨ [수정 3] 메시지 변경 감지 -> 읽음 처리 실행
   useEffect(() => {
     if (messages.length > 0) {
@@ -324,7 +306,6 @@ export default function ChatRoomScreen() {
   }, [messages, updateLastRead]);
 
   // 메시지 및 차단 리스너
->>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
   useEffect(() => {
     if (!chatRoomId || !currentUserId) return;
 
@@ -377,8 +358,6 @@ export default function ChatRoomScreen() {
     const isMyMessage = item.senderId === currentUserId;
     const displayName = userDisplayNames[item.senderId] || '...';
     
-<<<<<<< HEAD
-=======
     let unreadCount = 0;
     if (isMyMessage && chatRoom) {
       const others = chatRoom.members.filter(id => id !== currentUserId);
@@ -387,7 +366,6 @@ export default function ChatRoomScreen() {
         if (!last || item.createdAt.getTime() > last.getTime()) unreadCount++;
       });
     }
->>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
     return (
       <MessageItem
         item={item}
@@ -396,11 +374,7 @@ export default function ChatRoomScreen() {
         onPressAvatar={setProfileUserId}
       />
     );
-<<<<<<< HEAD
-  }, [currentUserId, userDisplayNames, myBlockedUsers]);
-=======
   }, [currentUserId, chatRoom, userDisplayNames, myBlockedUsers]);
->>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
 
   const keyExtractor = useCallback((item: IMessage) => item._id, []);
   const reversedMessages = useMemo(() => [...messages].reverse(), [messages]);
