@@ -3,7 +3,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
+// ✨ [수정] arrayUnion, arrayRemove 추가됨
+import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -197,13 +198,25 @@ export default function ChatRoomScreen() {
   const currentUserId = user?.uid;
   const flatListRef = useRef<FlatList>(null);
 
-  // ✨ [핵심 추가] 화면이 켜질 때 '안 읽은 갯수' 0으로 초기화
-  // (알림을 눌러서 바로 들어왔을 때도 뱃지를 지우기 위함)
+  // ✨ [수정 1] 입장/퇴장 관리 (activeUsers 등록 및 해제)
+  // - 입장 시: activeUsers에 내 ID 추가 + 뱃지(unreadCounts) 0으로 초기화
+  // - 퇴장 시: activeUsers에서 내 ID 제거 -> 그래야 알림 다시 옴
   useEffect(() => {
     if (chatRoomId && currentUserId) {
-        updateDoc(doc(db, 'chatRooms', chatRoomId), {
-            [`unreadCounts.${currentUserId}`]: 0
-        }).catch(err => console.log("뱃지 초기화 실패:", err));
+        const roomRef = doc(db, 'chatRooms', chatRoomId);
+        
+        // 1. 입장 로직
+        updateDoc(roomRef, {
+            activeUsers: arrayUnion(currentUserId),       // 접속자 명단에 추가
+            [`unreadCounts.${currentUserId}`]: 0          // 뱃지 숫자 0으로
+        }).catch(err => console.log("입장 처리 실패:", err));
+
+        // 2. 퇴장 로직 (Component Unmount 시 실행)
+        return () => {
+            updateDoc(roomRef, {
+                activeUsers: arrayRemove(currentUserId)   // 접속자 명단에서 제거
+            }).catch(err => console.log("퇴장 처리 실패:", err));
+        };
     }
   }, [chatRoomId, currentUserId]);
 
@@ -230,12 +243,14 @@ export default function ChatRoomScreen() {
     return () => { showSub.remove(); hideSub.remove(); };
   }, [scrollToBottom]);
 
-  // 읽음 처리 (lastReadBy 업데이트 - 메시지 옆 숫자 줄이기용)
+  // ✨ [수정 2] 실시간 읽음 처리 (lastReadBy + 뱃지 초기화 동시 처리)
+  // 메시지가 새로 오거나 화면이 갱신될 때마다 실행
   const updateLastRead = useCallback(async () => {
     if (!chatRoomId || !currentUserId) return;
     try {
       await updateDoc(doc(db, 'chatRooms', chatRoomId), {
-        [`lastReadBy.${currentUserId}`]: serverTimestamp()
+        [`lastReadBy.${currentUserId}`]: serverTimestamp(),
+        [`unreadCounts.${currentUserId}`]: 0  // 메시지를 보고 있는 중이므로 계속 0으로 유지
       });
     } catch (e) { console.log("Update read failed", e); }
   }, [chatRoomId, currentUserId]);
@@ -289,9 +304,11 @@ export default function ChatRoomScreen() {
     fetchMissingNames();
   }, [chatRoom?.members]);
 
-  // 메시지 업데이트 시 읽음 처리
+  // ✨ [수정 3] 메시지 변경 감지 -> 읽음 처리 실행
   useEffect(() => {
-    if (messages.length > 0) updateLastRead();
+    if (messages.length > 0) {
+        updateLastRead();
+    }
   }, [messages, updateLastRead]);
 
   // 메시지 및 차단 리스너

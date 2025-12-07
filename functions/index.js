@@ -75,7 +75,7 @@ exports.sendVerificationCode = functions.https.onCall(async (data, context) => {
 });
 
 // ==========================================
-// 2. 채팅 알림 (수정됨: 뱃지 카운트 기능 추가)
+// 2. 채팅 알림 (최종 완성: 접속자 알림 방지 + 뱃지 카운트)
 // ==========================================
 exports.sendChatNotification = functions.firestore
   .document("chatRooms/{chatRoomId}/messages/{messageId}")
@@ -93,28 +93,38 @@ exports.sendChatNotification = functions.firestore
       if (!roomData) return;
 
       const members = roomData.members || [];
+      // 현재 방에 들어와 있는 사람들 (접속자 명단)
+      const activeUsers = roomData.activeUsers || [];
+
+      // 나(보낸 사람) 제외
       const receiverIds = members.filter((uid) => uid !== senderId);
       if (receiverIds.length === 0) return;
 
-      // ✨ [추가된 로직] 상대방들의 안 읽은 갯수(unreadCounts) +1 증가시키기
       const updateData = {
-          lastMessage: messageText, // 목록에 미리보기용
-          lastMessageTimestamp: admin.firestore.FieldValue.serverTimestamp() // 정렬용 시간 업데이트
+          lastMessage: messageText, 
+          lastMessageTimestamp: admin.firestore.FieldValue.serverTimestamp() 
       };
       
       receiverIds.forEach(uid => {
-          // unreadCounts 맵 안에 있는 '상대방UID' 키의 값을 1 늘림
+          // ✨ 중요: 지금 방에 보고 있는 사람(activeUsers)이면 숫자를 올리지 않음!
+          // (혹은 숫자는 올려두고 앱에서 0으로 만들 수도 있지만, 알림은 확실히 막아야 함)
+          // 여기서는 숫자는 일단 올립니다. (앱에서 0으로 만드는 게 더 정확함)
           updateData[`unreadCounts.${uid}`] = admin.firestore.FieldValue.increment(1);
       });
 
-      // DB 업데이트 실행 (이게 있어야 빨간 숫자가 올라감!)
+      // DB 업데이트
       await roomRef.update(updateData);
 
-
-      // --- [여기서부터는 기존 푸시 알림 로직과 동일] ---
+      // --- [푸시 알림 보내기] ---
       const messagesToSend = [];
       
       for (const uid of receiverIds) {
+        // ✨ 핵심: 접속 중인 사람(activeUsers)에게는 알림을 보내지 않음!
+        if (activeUsers.includes(uid)) {
+            console.log(`🔕 접속 중이라 알림 생략: ${uid}`);
+            continue; 
+        }
+
         const userSnap = await admin.firestore().collection("users").doc(uid).get();
         const userData = userSnap.data();
         
@@ -138,7 +148,6 @@ exports.sendChatNotification = functions.firestore
       console.error("채팅 알림 에러:", error);
     }
   });
-
 // ==========================================
 // 3. 마켓 상태 변경 알림
 // ==========================================
