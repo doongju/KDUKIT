@@ -1,5 +1,3 @@
-// app/(tabs)/chatlist.tsx
-
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
@@ -24,15 +22,14 @@ interface ChatRoom {
   lastMessage?: string;
   lastMessageTimestamp?: any;
   members: string[];
-  // ✨ [수정] 'lost-item' 타입 추가
-  type: 'private' | 'party' | 'dm' | 'club' | 'market' | 'lost-item' | string; 
+  type: 'private' | 'party' | 'dm' | 'club' | 'market' | 'lost-item' | string;
 }
 
 const ChatRoomItem = memo(({ item, onPress, onLongPress }: { item: ChatRoom, onPress: (id: string) => void, onLongPress: (id: string, name: string) => void }) => {
   
   // 기본 설정 (1:1 채팅)
   let iconName: keyof typeof Ionicons.glyphMap = "chatbubble-ellipses";
-  let iconColor = "#0062ffff"; // 파랑
+  let iconColor = "#0062ffff";
   let iconBg = "#e8f0fe";
   let badgeText = "1:1";
   let badgeColor = "#f0f8ff";
@@ -40,34 +37,33 @@ const ChatRoomItem = memo(({ item, onPress, onLongPress }: { item: ChatRoom, onP
 
   // 타입별 스타일 분기 처리
   switch (item.type) {
-    case 'party': // 택시 파티
+    case 'party':
       iconName = "car";
-      iconColor = "#2196F3"; // 파랑
+      iconColor = "#2196F3";
       iconBg = iconColor + '15';
       badgeText = "택시";
       badgeColor = iconColor + '15';
       badgeTextColor = "#2196F3";
       break;
-    case 'club': // 동아리
+    case 'club':
       iconName = "people"; 
-      iconColor = "#FF9800"; // 주황
+      iconColor = "#FF9800";
       iconBg = iconColor + '15';
       badgeText = "동아리";
       badgeColor = iconColor + '15';
       badgeTextColor = "#FF9800";
       break;
-    case 'market': // 중고 장터
+    case 'market':
       iconName = "cart"; 
-      iconColor = "#4CAF50"; // 초록
+      iconColor = "#4CAF50";
       iconBg = iconColor + '15';
       badgeText = "중고장터";
       badgeColor = iconColor + '15';
       badgeTextColor = "#4CAF50";
       break;
-    // ✨ [추가] 분실물 센터
     case 'lost-item': 
       iconName = "search"; 
-      iconColor = "#FF5252"; // 빨강
+      iconColor = "#FF5252";
       iconBg = iconColor + '15';
       badgeText = "분실물";
       badgeColor = iconColor + '15';
@@ -98,21 +94,22 @@ const ChatRoomItem = memo(({ item, onPress, onLongPress }: { item: ChatRoom, onP
       {/* 정보 영역 */}
       <View style={styles.cardContent}>
         <View style={styles.cardHeader}>
-          {/* 배지 표시 */}
-          <View style={[styles.badge, { backgroundColor: badgeColor }]}>
-            <Text style={[styles.badgeText, { color: badgeTextColor }]}>{badgeText}</Text>
+          <View style={styles.headerLeft}>
+             {/* 배지 표시 */}
+            <View style={[styles.badge, { backgroundColor: badgeColor }]}>
+                <Text style={[styles.badgeText, { color: badgeTextColor }]}>{badgeText}</Text>
+            </View>
+            <Text style={styles.roomName} numberOfLines={1}>
+                {item.name}
+            </Text>
           </View>
-          
-          <Text style={styles.roomName} numberOfLines={1}>
-            {item.name}
-          </Text>
+          <Text style={styles.timestamp}>{timeString}</Text>
         </View>
 
         <View style={styles.messageRow}>
             <Text style={styles.lastMessage} numberOfLines={1}>
-            {item.lastMessage || "대화 내용이 없습니다."}
+              {item.lastMessage || "대화 내용이 없습니다."}
             </Text>
-            <Text style={styles.timestamp}>{timeString}</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -160,7 +157,7 @@ export default function ChatListScreen() {
                 lastMessage: data.lastMessage,
                 lastMessageTimestamp: data.lastMessageTimestamp,
                 members: data.members,
-                type: data.type || 'dm', 
+                type: data.type || 'dm',
             });
         });
         rooms.sort((a, b) => (b.lastMessageTimestamp?.toMillis() || 0) - (a.lastMessageTimestamp?.toMillis() || 0));
@@ -265,7 +262,13 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 6,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
   badge: {
     paddingHorizontal: 6,

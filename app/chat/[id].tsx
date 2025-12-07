@@ -1,9 +1,7 @@
-// app/chat/[id].tsx
-
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -23,7 +21,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserProfileModal from '../../components/UserProfileModal';
 import { db } from '../../firebaseConfig';
 
-// --- 타입 정의 ---
 interface IMessage {
   _id: string;
   text: string;
@@ -36,11 +33,9 @@ interface ChatRoom {
   members: string[];
   name: string;
   type?: string;
-  lastReadBy: { [uid: string]: Timestamp | null };
 }
 
-// ✨ [최적화] 아이콘 스타일 가져오는 함수 - useMemo로 감싸지 않아도 컴포넌트 밖이라 괜찮지만,
-// ChatHeader 내부에서 호출될 때 불필요한 연산을 줄이기 위해 로직은 그대로 유지.
+// 아이콘 스타일
 const getChatIconStyle = (type: string | undefined) => {
   let iconName: keyof typeof Ionicons.glyphMap = "chatbubble-ellipses";
   let iconColor = "#0062ffff";
@@ -71,11 +66,10 @@ const getChatIconStyle = (type: string | undefined) => {
   return { iconName, iconColor, iconBg };
 };
 
-// ✨ 커스텀 헤더 - Memoization 적용
+// 헤더 컴포넌트
 const ChatHeader = memo(({ name, type }: { name: string, type?: string }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  // useMemo를 사용하여 icon 스타일 계산 최적화
   const { iconName, iconColor, iconBg } = useMemo(() => getChatIconStyle(type), [type]);
 
   return (
@@ -97,9 +91,8 @@ const ChatHeader = memo(({ name, type }: { name: string, type?: string }) => {
 });
 ChatHeader.displayName = 'ChatHeader';
 
-// ✨ 메시지 아이템 - Memoization 유지
-const MessageItem = memo(({ item, isMyMessage, displayName, onPressAvatar, unreadCount }: any) => {
-  // 날짜 포맷팅 연산 최적화 (Intl.DateTimeFormat 사용 고려 가능하나 현재 방식도 무방)
+// 메시지 아이템
+const MessageItem = memo(({ item, isMyMessage, displayName, onPressAvatar }: any) => {
   const displayTime = useMemo(() => 
     item.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 
   [item.createdAt]);
@@ -118,7 +111,6 @@ const MessageItem = memo(({ item, isMyMessage, displayName, onPressAvatar, unrea
         <View style={[styles.bubbleWrapper, isMyMessage ? styles.myBubbleWrapper : styles.otherBubbleWrapper]}>
            {isMyMessage && (
             <View style={styles.statusAndTimeContainer}>
-              {unreadCount > 0 && <Text style={styles.readCountText}>{unreadCount}</Text>}
               <Text style={styles.timestamp}>{displayTime}</Text>
             </View>
           )}
@@ -137,14 +129,13 @@ const MessageItem = memo(({ item, isMyMessage, displayName, onPressAvatar, unrea
 }, (prev, next) => {
   return (
     prev.item._id === next.item._id && 
-    prev.unreadCount === next.unreadCount && 
     prev.displayName === next.displayName &&
-    prev.item.text === next.item.text // 텍스트 변경 여부도 확인
+    prev.item.text === next.item.text
   );
 });
 MessageItem.displayName = "MessageItem";
 
-// ✨ 입력창 컴포넌트 - Memoization 유지
+// 입력창
 const ChatInput = memo(({ onSend, paddingBottom }: { onSend: (text: string) => void, paddingBottom: number }) => {
   const [text, setText] = useState('');
 
@@ -180,7 +171,6 @@ const ChatInput = memo(({ onSend, paddingBottom }: { onSend: (text: string) => v
 });
 ChatInput.displayName = "ChatInput";
 
-// --- 메인 화면 ---
 export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams();
   const chatRoomId = id as string;
@@ -200,14 +190,12 @@ export default function ChatRoomScreen() {
   const currentUserId = user?.uid;
   const flatListRef = useRef<FlatList>(null);
 
-  // ✨ 스크롤 함수 최적화 - useCallback 사용
   const scrollToBottom = useCallback((animated = true) => {
     if (messages.length > 0) {
       flatListRef.current?.scrollToOffset({ offset: 0, animated });
     }
   }, [messages.length]);
 
-  // 키보드 리스너 최적화
   useEffect(() => {
     const showSub = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
@@ -223,17 +211,6 @@ export default function ChatRoomScreen() {
     return () => { showSub.remove(); hideSub.remove(); };
   }, [scrollToBottom]);
 
-  // 읽음 처리 최적화
-  const updateLastRead = useCallback(async () => {
-    if (!chatRoomId || !currentUserId) return;
-    try {
-      await updateDoc(doc(db, 'chatRooms', chatRoomId), {
-        [`lastReadBy.${currentUserId}`]: serverTimestamp()
-      });
-    } catch (e) { console.log("Update read failed", e); }
-  }, [chatRoomId, currentUserId]);
-
-  // 채팅방 정보 로드
   useEffect(() => {
     if (!chatRoomId) return;
     const unsub = onSnapshot(doc(db, 'chatRooms', chatRoomId), (docSnap) => {
@@ -247,26 +224,21 @@ export default function ChatRoomScreen() {
     return () => unsub();
   }, [chatRoomId, navigation]);
 
-  // 멤버 이름 로드 최적화 - members 배열이 변경될 때만 실행
   useEffect(() => {
     if (!chatRoom?.members) return;
     
     const fetchMissingNames = async () => {
-      // 이미 이름이 있는 멤버는 제외하여 불필요한 요청 방지
       const missingMembers = chatRoom.members.filter(uid => !userDisplayNames[uid]);
       if (missingMembers.length === 0) return;
 
       const newNames: { [uid: string]: string } = {};
       
-      // Promise.allSettled를 사용하여 일부 요청 실패 시에도 나머지 처리 가능하도록 개선 가능하나
-      // 현재 구조상 Promise.all 유지
       await Promise.all(missingMembers.map(async (uid) => {
         try {
           const uSnap = await getDoc(doc(db, 'users', uid));
           let name = '알 수 없음';
           if (uSnap.exists()) {
             const d = uSnap.data();
-            // 이름 생성 로직
             if (d.department) {
                 if (d.email) {
                     const prefix = d.email.split('@')[0];
@@ -284,14 +256,8 @@ export default function ChatRoomScreen() {
     };
     
     fetchMissingNames();
-  }, [chatRoom?.members]); // 의존성 배열 간소화
+  }, [chatRoom?.members]);
 
-  // 메시지 업데이트 시 읽음 처리 - messages 의존성
-  useEffect(() => {
-    if (messages.length > 0) updateLastRead();
-  }, [messages, updateLastRead]);
-
-  // 메시지 및 차단 리스너
   useEffect(() => {
     if (!chatRoomId || !currentUserId) return;
 
@@ -311,10 +277,8 @@ export default function ChatRoomScreen() {
         } as IMessage;
       });
       
-      // 상태 업데이트 함수형으로 변경하여 의존성 문제 최소화
       setMessages(msgs);
       setLoading(false);
-      // 메시지 로드 시 스크롤 최적화: requestAnimationFrame 사용 고려
       setTimeout(() => scrollToBottom(false), 100);
     });
 
@@ -331,43 +295,32 @@ export default function ChatRoomScreen() {
       await addDoc(collection(db, 'chatRooms', chatRoomId, 'messages'), {
         text, createdAt: serverTimestamp(), senderId: user.uid,
       });
+
       await updateDoc(doc(db, 'chatRooms', chatRoomId), {
-        lastMessage: text, lastMessageTimestamp: serverTimestamp(),
+        lastMessage: text,
+        lastMessageTimestamp: serverTimestamp(),
       });
+      
       scrollToBottom();
     } catch (e) { console.error(e); }
   }, [chatRoom, myBlockedUsers, chatRoomId, currentUserId, user, scrollToBottom]);
 
-  // renderItem 최적화 - useCallback 사용
   const renderItem: ListRenderItem<IMessage> = useCallback(({ item }) => {
     if (myBlockedUsers.includes(item.senderId)) return null;
     const isMyMessage = item.senderId === currentUserId;
     const displayName = userDisplayNames[item.senderId] || '...';
     
-    let unreadCount = 0;
-    if (isMyMessage && chatRoom) {
-      const others = chatRoom.members.filter(id => id !== currentUserId);
-      others.forEach(uid => {
-        const last = chatRoom.lastReadBy?.[uid]?.toDate();
-        // 읽음 카운트 계산 로직
-        if (!last || item.createdAt.getTime() > last.getTime()) unreadCount++;
-      });
-    }
     return (
       <MessageItem
         item={item}
         isMyMessage={isMyMessage}
         displayName={displayName}
         onPressAvatar={setProfileUserId}
-        unreadCount={unreadCount}
       />
     );
-  }, [currentUserId, chatRoom, userDisplayNames, myBlockedUsers]); // 필요한 의존성만 포함
+  }, [currentUserId, userDisplayNames, myBlockedUsers]);
 
-  // FlatList용 keyExtractor 최적화
   const keyExtractor = useCallback((item: IMessage) => item._id, []);
-
-  // 메시지 데이터 뒤집기 최적화 - 렌더링 시마다 매번 reverse() 하지 않도록 useMemo 사용
   const reversedMessages = useMemo(() => [...messages].reverse(), [messages]);
 
   if (loading) return <View style={styles.loadingScreen}><ActivityIndicator size="large" color="#0062ffff" /></View>;
@@ -386,15 +339,15 @@ export default function ChatRoomScreen() {
         <FlatList
           ref={flatListRef}
           inverted
-          data={reversedMessages} // 최적화된 데이터 사용
-          keyExtractor={keyExtractor} // 최적화된 keyExtractor 사용
+          data={reversedMessages}
+          keyExtractor={keyExtractor}
           renderItem={renderItem}
           style={styles.messageList}
           contentContainerStyle={styles.messageListContent}
           initialNumToRender={15}
           maxToRenderPerBatch={10}
           windowSize={10}
-          removeClippedSubviews={true} // 화면 밖 아이템 메모리 해제 (성능 향상)
+          removeClippedSubviews={true}
           keyboardDismissMode="interactive"
         />
         
@@ -407,7 +360,6 @@ export default function ChatRoomScreen() {
 };
 
 const styles = StyleSheet.create({
-  // ... 기존 스타일 유지 ...
   container: { flex: 1, backgroundColor: '#fff' },
   loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   
@@ -505,7 +457,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end' 
   },
   timestamp: { fontSize: 10, color: '#aaa' },
-  readCountText: { fontSize: 10, color: '#0062ffff', fontWeight: 'bold', marginBottom: 2 },
 
   inputWrapper: { 
     backgroundColor: '#fff', 
