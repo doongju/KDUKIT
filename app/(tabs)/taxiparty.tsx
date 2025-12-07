@@ -1,12 +1,27 @@
+// app/(tabs)/taxiparty.tsx
+
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-import { arrayUnion, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import {
+  arrayUnion,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc
+} from 'firebase/firestore';
 import { memo, useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -27,9 +42,9 @@ interface TaxiParty {
   currentMembers: string[];
   creatorId: string;
   createdAt: any; 
+  creatorName?: string; 
 }
 
-// 멤버 슬롯 시각화 컴포넌트
 const MemberSlots = ({ current, limit }: { current: number, limit: number }) => {
   const slots = Array.from({ length: limit }, (_, i) => i < current);
   
@@ -51,9 +66,10 @@ const MemberSlots = ({ current, limit }: { current: number, limit: number }) => 
   );
 };
 
-const PartyItem = memo(({ item, user, onPressProfile, onJoin, onChat, onFinish, onDelete }: any) => {
-    const isCreator = user && user.uid === item.creatorId;
-    const isMember = user && item.currentMembers.includes(user.uid);
+// ✨ [최적화] user 객체 대신 currentUserId(string)만 받음
+const PartyItem = memo(({ item, currentUserId, onPressProfile, onJoin, onChat, onFinish, onDelete }: any) => {
+    const isCreator = currentUserId && currentUserId === item.creatorId;
+    const isMember = currentUserId && item.currentMembers.includes(currentUserId);
     const isFull = item.currentMembers.length >= item.memberLimit;
     
     let statusText = "모집중";
@@ -76,7 +92,7 @@ const PartyItem = memo(({ item, user, onPressProfile, onJoin, onChat, onFinish, 
         <View style={styles.cardHeader}>
           {isCreator ? (
             <View style={styles.myBadge}>
-              <Text style={styles.myBadgeText}>MY PARTY</Text>
+              <Text style={styles.myBadgeText}>내가 만든 파티</Text>
             </View>
           ) : <View />} 
           
@@ -107,11 +123,23 @@ const PartyItem = memo(({ item, user, onPressProfile, onJoin, onChat, onFinish, 
             </View>
         </View>
 
-        {/* 3. 인원 현황 */}
+        {/* 3. 인원 현황 및 개설자 정보 */}
         <View style={styles.slotRow}>
-            <Text style={styles.slotLabel}>참여 현황</Text>
-            <TouchableOpacity onPress={() => onPressProfile(item.creatorId)}>
-                <MemberSlots current={item.currentMembers.length} limit={item.memberLimit} />
+            <View>
+                <Text style={styles.slotLabel}>참여 현황</Text>
+                <TouchableOpacity onPress={() => onPressProfile(item.creatorId)}>
+                    <MemberSlots current={item.currentMembers.length} limit={item.memberLimit} />
+                </TouchableOpacity>
+            </View>
+            
+            <TouchableOpacity 
+                style={styles.creatorInfoButton} 
+                onPress={() => onPressProfile(item.creatorId)} 
+                activeOpacity={0.6}
+            >
+                <Ionicons name="person-circle-outline" size={14} color="#555" style={{marginRight: 4}}/>
+                <Text style={styles.creatorInfoText}>방장 프로필</Text>
+                <Ionicons name="chevron-forward" size={12} color="#999" style={{marginLeft: 2}}/>
             </TouchableOpacity>
         </View>
 
@@ -157,14 +185,17 @@ export default function TaxiPartyScreen() {
   const [parties, setParties] = useState<TaxiParty[]>([]);
   const [loading, setLoading] = useState(true);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
-  const [finishParty, setFinishParty] = useState<TaxiParty | null>(null); 
+  
+  // ✨ 운행 종료 모달 상태
+  const [finishParty, setFinishParty] = useState<TaxiParty | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, "taxiParties"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const partiesData = querySnapshot.docs.map(doc => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
+        creatorName: doc.data().creatorName || null
       })) as TaxiParty[];
       setParties(partiesData);
       setLoading(false);
@@ -173,7 +204,7 @@ export default function TaxiPartyScreen() {
   }, []);
 
   const handleCreateParty = () => {
-    router.push('/(tabs)/create-party');
+    router.push('/create-party');
   };
 
   const handleDeleteParty = (partyId: string, creatorId: string) => {
@@ -187,6 +218,7 @@ export default function TaxiPartyScreen() {
   };
 
   const handleFinishParty = (party: TaxiParty) => {
+    // 바로 모달을 띄움
     setFinishParty(party);
   };
 
@@ -237,38 +269,41 @@ export default function TaxiPartyScreen() {
   const renderPartyItem = useCallback(({ item }: { item: TaxiParty }) => (
       <PartyItem 
         item={item} 
-        user={user} 
+        currentUserId={user?.uid} 
         onPressProfile={setProfileUserId}
         onJoin={handleJoinParty}
         onChat={navigateToPartyChat}
-        onFinish={handleFinishParty}
+        onFinish={handleFinishParty} 
         onDelete={handleDeleteParty}
       />
   ), [user]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>택시 파티</Text>
-        <Text style={styles.subHeader}>같이 택시를 탈 사람을 찾아보세요!</Text>
+    <View style={[styles.container]}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <Text style={styles.headerTitle}>택시파티</Text>
       </View>
       
-      <TouchableOpacity style={styles.createPartyButton} onPress={handleCreateParty}>
-        <Text style={styles.createPartyButtonText}>택시파티+</Text>
-      </TouchableOpacity>
-      
-      {loading ? <ActivityIndicator size="large" color="#0062ffff" /> : (
+      {loading ? <ActivityIndicator size="large" color="#0062ffff" style={{marginTop: 50}} /> : (
         <FlatList
           data={parties}
           renderItem={renderPartyItem}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.listContentContainer}
-          ListEmptyComponent={<Text style={styles.emptyText}>진행 중인 파티가 없습니다.</Text>}
-          initialNumToRender={5}
-          maxToRenderPerBatch={5}
-          windowSize={5}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+                <Ionicons name="car-sport-outline" size={60} color="#ddd" />
+                <Text style={styles.emptyText}>현재 모집 중인 파티가 없어요</Text>
+                <Text style={styles.emptySubText}>직접 파티를 만들어보세요!</Text>
+            </View>
+          }
         />
       )}
+
+      {/* ✨ FAB 위치 수정됨 (안드로이드에서도 탭바 피함) */}
+      <TouchableOpacity style={styles.fab} onPress={handleCreateParty}>
+        <Ionicons name="add" size={32} color="white" />
+      </TouchableOpacity>
 
       <UserProfileModal 
         visible={!!profileUserId}
@@ -276,11 +311,12 @@ export default function TaxiPartyScreen() {
         onClose={() => setProfileUserId(null)}
       />
 
+      {/* ✨ 운행 종료 모달 연결 */}
       {finishParty && (
         <TaxiFinishModal
             visible={!!finishParty}
             partyId={finishParty.id}
-            members={finishParty.currentMembers.filter(uid => uid !== user?.uid)}
+            members={finishParty.currentMembers.filter(uid => uid !== user?.uid)} 
             onClose={() => setFinishParty(null)}
             onComplete={() => setFinishParty(null)}
         />
@@ -290,31 +326,30 @@ export default function TaxiPartyScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  header: { paddingHorizontal: 20, marginBottom: 5 },
-  headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#0062ffff' },
-  subHeader: { fontSize: 16, color: '#777', marginBottom: 15 },
-  
-  createPartyButton: { 
-    backgroundColor: '#0062ffff', 
-    paddingVertical: 10, 
-    paddingHorizontal: 15, 
-    borderRadius: 8, 
-    alignSelf: 'flex-end', 
-    marginRight: 20, 
-    marginBottom: 10 
+  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  header: { 
+    paddingHorizontal: 20, 
+    paddingBottom: 15, 
+    backgroundColor: '#fff', 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#eee',
+    zIndex: 10
   },
-  createPartyButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#333' },
   
-  listContentContainer: { paddingHorizontal: 20, paddingBottom: 100 },
-  emptyText: { textAlign: 'center', marginTop: 50, color: '#999' },
+  listContentContainer: { padding: 16, paddingBottom: 100 },
   
-  // --- Card Styles ---
   card: { 
     backgroundColor: '#fff', 
-    borderRadius: 12, 
-    padding: 15, 
-    marginBottom: 15, 
+    borderRadius: 20, 
+    padding: 20, 
+    marginBottom: 16, 
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 4 }, 
+    shadowOpacity: 0.05, 
+    shadowRadius: 10,
     elevation: 2 
   },
   myCard: {
@@ -326,14 +361,13 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 15,
     height: 24,
   },
   myBadge: {
     backgroundColor: '#0062ffff',
     paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingVertical: 7,
     borderRadius: 6,
   },
   myBadgeText: {
@@ -345,15 +379,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-    justifyContent: 'center',
-    marginLeft: 'auto'
+    justifyContent: 'center'
   },
   statusText: {
     fontSize: 11,
     fontWeight: 'bold',
   },
 
-  // --- Main Info ---
   mainInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -365,7 +397,7 @@ const styles = StyleSheet.create({
     minWidth: 80,
   },
   timeLabel: { fontSize: 11, color: '#888', marginBottom: 2 },
-  timeText: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  timeText: { fontSize: 24, fontWeight: '800', color: '#333' },
   
   dividerVertical: {
     width: 1,
@@ -377,12 +409,11 @@ const styles = StyleSheet.create({
   routeSection: { flex: 1 },
   routeRow: { flexDirection: 'row', alignItems: 'center' },
   dot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-  routeLineContainer: { paddingLeft: 3.5 },
+  routeLineContainer: { paddingLeft: 3.5 }, 
   routeLine: { width: 1, height: 16, backgroundColor: '#eee', marginVertical: 2 },
   routeText: { fontSize: 15, color: '#555', flex: 1 },
   destText: { fontSize: 16, fontWeight: 'bold', color: '#333' },
 
-  // --- Slot Row ---
   slotRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -392,34 +423,48 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 10,
   },
-  slotLabel: { fontSize: 12, color: '#666', fontWeight: '600' },
+  slotLabel: { fontSize: 12, color: '#666', fontWeight: '600', marginBottom: 4 },
   slotContainer: { flexDirection: 'row', alignItems: 'center' },
   slotText: { fontSize: 12, color: '#444', fontWeight: 'bold', marginLeft: 6 },
 
+  creatorInfoButton: {
+    backgroundColor: '#f8f9fa',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#f1f3f5'
+  },
+  creatorInfoText: { fontSize: 12, color: '#666', fontWeight: '600' },
+
   dividerHorizontal: { height: 1, backgroundColor: '#f0f0f0', marginBottom: 15 },
 
-  // --- Buttons ---
   actionContainer: { flexDirection: 'row' },
   creatorButtons: { flexDirection: 'row', flex: 1, gap: 10 },
   finishBtn: { 
     flex: 1, 
-    backgroundColor: '#28a745', 
-    borderRadius: 8, 
-    paddingVertical: 12, 
-    alignItems: 'center'
+    backgroundColor: '#0062ffff', 
+    borderRadius: 12, 
+    paddingVertical: 14, 
+    alignItems: 'center',
+    shadowColor: '#0062ffff', shadowOffset: {width:0, height:2}, shadowOpacity:0.2, shadowRadius:4
   },
   deleteBtn: { 
     width: 50, 
-    backgroundColor: '#dc3545', 
-    borderRadius: 8, 
+    backgroundColor: '#fff', 
+    borderWidth: 1,
+    borderColor: '#ff4444',
+    borderRadius: 12, 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
   chatBtn: { 
     flex: 1,
-    backgroundColor: '#17a2b8', 
-    borderRadius: 8, 
-    paddingVertical: 12, 
+    backgroundColor: '#2ecc71', 
+    borderRadius: 12, 
+    paddingVertical: 14, 
     alignItems: 'center', 
     flexDirection: 'row', 
     justifyContent: 'center' 
@@ -427,15 +472,38 @@ const styles = StyleSheet.create({
   joinBtn: { 
     flex: 1,
     backgroundColor: '#0062ffff', 
-    borderRadius: 8, 
-    paddingVertical: 12, 
-    alignItems: 'center'
+    borderRadius: 12, 
+    paddingVertical: 14, 
+    alignItems: 'center',
+    shadowColor: '#0062ffff', shadowOffset: {width:0, height:2}, shadowOpacity:0.2, shadowRadius:4
   },
   disabledBtn: { 
-    backgroundColor: '#ccc',
+    backgroundColor: '#e0e0e0',
     shadowOpacity: 0 
   },
   
   btnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
   joinBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+
+  emptyContainer: { alignItems: 'center', marginTop: 100 },
+  emptyText: { fontSize: 18, color: '#555', marginTop: 15, fontWeight: 'bold' },
+  emptySubText: { fontSize: 14, color: '#999', marginTop: 5 },
+
+  fab: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 100 : 90, // ✨ 안드로이드 높이 수정 (탭바 회피)
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#0062ffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    zIndex: 999,
+  },
 });

@@ -1,5 +1,3 @@
-// app/(tabs)/clublist.tsx
-
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -9,7 +7,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
+  BackHandler,
   FlatList,
   Platform,
   RefreshControl,
@@ -24,7 +22,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
+import UserProfileModal from '../../components/UserProfileModal';
 
 interface ClubPost {
   id: string;
@@ -35,10 +33,18 @@ interface ClubPost {
   currentMembers: string[];
   creatorId: string;
   imageUrl?: string;
+  creatorName?: string; 
 }
 
-const ClubItemBase = ({ item, onPress }: { item: ClubPost, onPress: (post: ClubPost) => void }) => {
+const ClubItemBase = ({ item, onPress, currentUserId, onProfilePress }: { 
+    item: ClubPost, 
+    onPress: (post: ClubPost) => void, 
+    currentUserId?: string,
+    onProfilePress: (userId: string) => void 
+}) => {
   const isFull = item.currentMembers.length >= item.memberLimit;
+  const isMyPost = currentUserId && item.creatorId === currentUserId; 
+  
   return (
     <TouchableOpacity style={styles.card} onPress={() => onPress(item)} activeOpacity={0.7}>
       <View style={styles.cardInner}>
@@ -57,11 +63,20 @@ const ClubItemBase = ({ item, onPress }: { item: ClubPost, onPress: (post: ClubP
           )}
         </View>
         <View style={styles.textContainer}> 
+          {/* 1. 제목 줄 */}
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.clubName} numberOfLines={1}>{item.clubName}</Text>
+            <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
+                <Text style={styles.clubName} numberOfLines={1}>{item.clubName}</Text>
+                {isMyPost && (
+                    <View style={styles.myPostBadge}>
+                        <Text style={styles.myPostBadgeText}>내 동아리</Text>
+                    </View>
+                )}
+            </View>
             <View style={[styles.statusDot, { backgroundColor: isFull ? '#ff5252' : '#00c853' }]} />
           </View>
-          <Text style={styles.description} numberOfLines={2}>{item.description}</Text>
+          
+          {/* 2. 태그 줄 (위로 이동) */}
           <View style={styles.tagRow}>
             <View style={styles.categoryTag}>
               <Text style={styles.categoryTagText}>{item.activityField}</Text>
@@ -73,6 +88,23 @@ const ClubItemBase = ({ item, onPress }: { item: ClubPost, onPress: (post: ClubP
               </Text>
             </View>
           </View>
+
+          {/* 3. 작성자 정보 버튼 (아래로 이동 & 우측 정렬) */}
+          <View style={styles.authorRow}>
+            <TouchableOpacity 
+                style={styles.authorInfoButton} 
+                onPress={() => onProfilePress(item.creatorId)} 
+                activeOpacity={0.6}
+                hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
+            >
+                <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                    <Ionicons name="person-circle-outline" size={14} color="#555" style={{marginRight: 4}}/>
+                    <Text style={styles.authorInfoText}>작성자 프로필</Text>
+                    <Ionicons name="chevron-forward" size={12} color="#999" style={{marginLeft: 2}}/>
+                </View>
+            </TouchableOpacity>
+          </View>
+
         </View>
       </View>
     </TouchableOpacity>
@@ -94,6 +126,18 @@ export default function ClubListScreen() {
   const [isSearching, setIsSearching] = useState(false); 
   const [searchQuery, setSearchQuery] = useState('');   
 
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const backAction = () => {
+      if (profileUserId) { setProfileUserId(null); return true; }
+      if (isSearching) { setIsSearching(false); setSearchQuery(''); return true; }
+      return false;
+    };
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [profileUserId, isSearching]);
+
   const fetchClubPosts = useCallback(() => {
     if (!currentUser) { setLoading(false); setClubPosts([]); return () => {}; }
     setLoading(true);
@@ -113,6 +157,7 @@ export default function ClubListScreen() {
           currentMembers: data.currentMembers || [],
           creatorId: data.creatorId,
           imageUrl: data.imageUrl,
+          creatorName: data.creatorName || "익명",
         };
       }) as ClubPost[];
       postsData.sort((a, b) => (b.id > a.id ? 1 : -1));
@@ -139,20 +184,22 @@ export default function ClubListScreen() {
     );
   }, [searchQuery, clubPosts]);
 
-  // ✨ [수정 1] router.push 타입 에러 해결 (as any 추가)
   const handlePressPost = useCallback((post: ClubPost) => {
-    // TypeScript가 경로 문자열을 엄격하게 체크해서 에러가 발생하므로 'as any'로 우회합니다.
     router.push(`/club-detail/${post.id}` as any);
   }, [router]);
 
-  // ✨ [수정 2] 누락되었던 renderItem 함수 정의 추가
   const renderItem = useCallback(({ item }: { item: ClubPost }) => (
-    <ClubItem item={item} onPress={handlePressPost} />
-  ), [handlePressPost]);
+    <ClubItem 
+        item={item} 
+        onPress={handlePressPost} 
+        currentUserId={currentUser?.uid} 
+        onProfilePress={(uid) => setProfileUserId(uid)}
+    />
+  ), [handlePressPost, currentUser]);
 
   const handleCreateClubPost = () => {
     if (!currentUser) return Alert.alert("로그인 필요", "로그인 후 작성할 수 있습니다.");
-    router.push({ pathname: '/(tabs)/create-club', params: { mode: 'new', t: Date.now().toString() } });
+    router.push({ pathname: '/create-club', params: { mode: 'new', t: Date.now().toString() } });
   };
 
   if (loading) return <View style={[styles.container, {justifyContent:'center', alignItems:'center'}]}><ActivityIndicator size="large" color="#0062ffff" /></View>;
@@ -178,7 +225,6 @@ export default function ClubListScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       
-      {/* Header */}
       <View style={[styles.headerContainer, { paddingTop: insets.top }]}> 
         {isSearching ? (
           <View style={styles.searchBarWrapper}>
@@ -209,7 +255,6 @@ export default function ClubListScreen() {
         )}
       </View>
       
-      {/* Filter Bar */}
       {!isSearching && (
         <View style={styles.filterBar}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
@@ -226,7 +271,6 @@ export default function ClubListScreen() {
         </View>
       )}
 
-      {/* Main List */}
       <FlatList
         data={displayedPosts}
         renderItem={renderItem} 
@@ -253,6 +297,8 @@ export default function ClubListScreen() {
           <Ionicons name="add" size={26} color="white" />
           <Text style={styles.fabText}>모집하기</Text>
       </TouchableOpacity>
+
+      <UserProfileModal visible={!!profileUserId} userId={profileUserId} onClose={() => setProfileUserId(null)} />
     </View>
   );
 }
@@ -279,9 +325,41 @@ const styles = StyleSheet.create({
   noImagePlaceholder: { width: 84, height: 84, borderRadius: 12, backgroundColor: '#f8f9fa', justifyContent: 'center', alignItems: 'center' },
   textContainer: { flex: 1, justifyContent: 'space-between' },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  clubName: { fontSize: 17, fontWeight: 'bold', color: '#222', flex: 1, marginRight: 8 },
+  clubName: { fontSize: 17, fontWeight: 'bold', color: '#222', marginRight: 6 }, 
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  description: { fontSize: 13, color: '#666', lineHeight: 18, marginBottom: 8 },
+
+  myPostBadge: {
+    backgroundColor: '#e3f2fd',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: '#bbdefb'
+  },
+  myPostBadgeText: {
+    color: '#1976d2',
+    fontSize: 10,
+    fontWeight: '700'
+  },
+  
+  // ✨ [추가] 우측 하단 정렬용 컨테이너
+  authorRow: {
+    alignItems: 'flex-end',
+    marginTop: 8, 
+  },
+  
+  // ✨ [수정] 작성자 버튼 스타일 (좌측 정렬 제거)
+  authorInfoButton: {
+    backgroundColor: '#f8f9fa',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#f1f3f5'
+  },
+  authorInfoText: { fontSize: 12, color: '#666', fontWeight: '600' },
+
   tagRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   categoryTag: { backgroundColor: '#eef4ff', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   categoryTagText: { color: '#0062ffff', fontSize: 11, fontWeight: '700' },

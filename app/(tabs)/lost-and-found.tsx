@@ -1,7 +1,6 @@
-// app/(tabs)/lost-and-found.tsx
-
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
+import { getAuth } from 'firebase/auth';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { memo, useCallback, useEffect, useState } from 'react';
 import {
@@ -22,83 +21,130 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../firebaseConfig';
 
+// ✨ 프로필 모달 import
+import UserProfileModal from '../../components/UserProfileModal';
+
 interface LostItem {
   id: string;
-  type: 'lost' | 'found';
+  type: string;
+  postType?: 'lost' | 'found'; 
   itemName: string;
   location: string;
   createdAt: any;
   status: string;
   imageUrl?: string;    
   imageUrls?: string[]; 
+  creatorId: string;
+  creatorName?: string;
 }
 
-// ✨ 리스트 아이템 컴포넌트
-const ItemCard = memo(({ item, onPress }: { item: LostItem, onPress: (id: string) => void }) => {
-    // 이미지 처리 로직 (배열이 있으면 첫 번째꺼, 없으면 단일, 그도 없으면 null)
-    const thumbnail = item.imageUrls && item.imageUrls.length > 0 
-        ? item.imageUrls[0] 
-        : (item.imageUrl ? item.imageUrl : null);
-    
-    const moreImagesCount = item.imageUrls ? item.imageUrls.length - 1 : 0;
+// ✨ [수정] ItemCard: 로직 단순화 (바로 모달 열기)
+const ItemCard = memo(({ item, onPress, currentUserId, onProfilePress }: { 
+    item: LostItem, 
+    onPress: (id: string) => void, 
+    currentUserId?: string,
+    onProfilePress: (userId: string) => void 
+}) => {
+  const thumbnail = item.imageUrls && item.imageUrls.length > 0 
+      ? item.imageUrls[0] 
+      : (item.imageUrl ? item.imageUrl : null);
+  
+  const moreImagesCount = item.imageUrls ? item.imageUrls.length - 1 : 0;
 
-    // 날짜 포맷팅
-    const dateString = item.createdAt?.toDate 
-        ? item.createdAt.toDate().toLocaleDateString() 
-        : '';
+  // 날짜 포맷 (YYYY/MM/DD)
+  let dateString = '';
+  if (item.createdAt?.toDate) {
+      const d = item.createdAt.toDate();
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      dateString = `${year}/${month}/${day}`;
+  }
 
-    return (
-      <TouchableOpacity 
-          style={styles.card}
-          onPress={() => onPress(item.id)}
-          activeOpacity={0.9} 
-      >
-          <View style={styles.imageContainer}>
-            {thumbnail ? (
-                <>
-                    <Image source={{ uri: thumbnail }} style={styles.cardImage} />
-                    {moreImagesCount > 0 && (
-                        <View style={styles.multipleImageIcon}>
-                             <Ionicons name="layers" size={12} color="#fff" />
+  const displayType = item.postType || item.type;
+  const isMyPost = currentUserId && item.creatorId === currentUserId;
+
+  return (
+    <TouchableOpacity 
+        style={styles.card}
+        onPress={() => onPress(item.id)}
+        activeOpacity={0.9} 
+    >
+        <View style={styles.imageContainer}>
+          {thumbnail ? (
+              <>
+                  <Image source={{ uri: thumbnail }} style={styles.cardImage} />
+                  {moreImagesCount > 0 && (
+                      <View style={styles.multipleImageIcon}>
+                           <Ionicons name="layers" size={12} color="#fff" />
+                      </View>
+                  )}
+              </>
+          ) : (
+              <View style={[styles.noImageContainer, displayType === 'lost' ? styles.bgLostLight : styles.bgFoundLight]}>
+                  <Ionicons 
+                      name={displayType === 'lost' ? "search" : "gift-outline"} 
+                      size={32} 
+                      color={displayType === 'lost' ? "#ff6b6b" : "#4d96ff"} 
+                  />
+              </View>
+          )}
+        </View>
+
+        <View style={styles.textContainer}>
+            {/* Header Row */}
+            <View style={styles.headerRow}>
+                <View style={styles.badgesContainer}>
+                    <View style={[styles.badge, displayType === 'lost' ? styles.badgeLost : styles.badgeFound]}>
+                        <Text style={[styles.badgeText, displayType === 'lost' ? styles.textLost : styles.textFound]}>
+                            {displayType === 'lost' ? '분실' : '습득'}
+                        </Text>
+                    </View>
+                    {isMyPost && (
+                        <View style={styles.myPostBadge}>
+                            <Text style={styles.myPostBadgeText}>내 글</Text>
                         </View>
                     )}
-                </>
-            ) : (
-                <View style={[styles.noImageContainer, item.type === 'lost' ? styles.bgLostLight : styles.bgFoundLight]}>
-                    <Ionicons 
-                        name={item.type === 'lost' ? "search" : "gift-outline"} 
-                        size={32} 
-                        color={item.type === 'lost' ? "#ff6b6b" : "#4d96ff"} 
-                    />
                 </View>
-            )}
-          </View>
+                <Text style={styles.dateText}>{dateString}</Text>
+            </View>
 
-          <View style={styles.textContainer}>
-              <View style={styles.headerRow}>
-                  <View style={[styles.badge, item.type === 'lost' ? styles.badgeLost : styles.badgeFound]}>
-                      <Text style={[styles.badgeText, item.type === 'lost' ? styles.textLost : styles.textFound]}>
-                          {item.type === 'lost' ? '분실' : '습득'}
-                      </Text>
-                  </View>
-                  <Text style={styles.dateText}>{dateString}</Text>
-              </View>
+            <Text style={styles.title} numberOfLines={1}>{item.itemName}</Text>
+            
+            <View style={styles.locationRow}>
+                <Ionicons name="location-sharp" size={14} color="#888" style={{marginRight: 4}} />
+                <Text style={styles.locationText} numberOfLines={1}>{item.location}</Text>
+            </View>
 
-              <Text style={styles.title} numberOfLines={1}>{item.itemName}</Text>
-              
-              <View style={styles.locationRow}>
-                  <Ionicons name="location-sharp" size={14} color="#888" style={{marginRight: 2}} />
-                  <Text style={styles.locationText} numberOfLines={1}>{item.location}</Text>
-              </View>
-          </View>
-      </TouchableOpacity>
-    );
+            {/* ✨ [수정] 작성자 프로필 버튼 (즉시 모달 실행) */}
+            <View style={styles.authorRow}>
+                <TouchableOpacity 
+                    style={styles.authorInfoButton} 
+                    onPress={(e) => {
+                        e.stopPropagation(); // 카드 클릭 방지
+                        onProfilePress(item.creatorId); // 바로 모달 열기
+                    }}
+                    hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
+                >
+                    <View style={{flexDirection:'row', alignItems:'center'}}>
+                        <Ionicons name="person-circle-outline" size={14} color="#555" style={{marginRight: 4}}/>
+                        <Text style={styles.authorInfoText}>작성자 프로필</Text>
+                        <Ionicons name="chevron-forward" size={12} color="#999" style={{marginLeft: 2}}/>
+                    </View>
+                </TouchableOpacity>
+            </View>
+        </View>
+    </TouchableOpacity>
+  );
 });
 ItemCard.displayName = "ItemCard";
 
 export default function LostAndFoundScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const auth = getAuth();
+  const currentUser = auth.currentUser;
+
   const [items, setItems] = useState<LostItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -108,9 +154,16 @@ export default function LostAndFoundScreen() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const [writeModalVisible, setWriteModalVisible] = useState(false);
+  
+  // 프로필 모달 상태
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
 
   useEffect(() => {
       const backAction = () => {
+          if (profileUserId) {
+              setProfileUserId(null);
+              return true;
+          }
           if (writeModalVisible) {
               setWriteModalVisible(false);
               return true;
@@ -124,14 +177,15 @@ export default function LostAndFoundScreen() {
       };
       const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
       return () => backHandler.remove();
-  }, [isSearching, writeModalVisible]);
+  }, [isSearching, writeModalVisible, profileUserId]);
 
   useEffect(() => {
       const q = query(collection(db, "lostAndFoundItems"), orderBy("createdAt", "desc"));
       const unsubscribe = onSnapshot(q, (snapshot) => {
           const loadedItems = snapshot.docs.map(doc => ({
               id: doc.id,
-              ...doc.data()
+              ...doc.data(),
+              creatorName: doc.data().creatorName || null
           })) as LostItem[];
           setItems(loadedItems);
           setLoading(false);
@@ -141,7 +195,8 @@ export default function LostAndFoundScreen() {
   }, []);
 
   const filteredItems = items.filter(item => {
-      const matchesType = filter === 'all' || item.type === filter;
+      const itemType = item.postType || item.type;
+      const matchesType = filter === 'all' || itemType === filter;
       const query = searchQuery.toLowerCase();
       const matchesSearch = 
           item.itemName.toLowerCase().includes(query) || 
@@ -160,17 +215,22 @@ export default function LostAndFoundScreen() {
 
   const handleNavigateToWrite = (type: 'lost' | 'found') => {
       setWriteModalVisible(false);
-      router.push(`/(tabs)/create-lost-item?type=${type}`);
+      router.push(`/create-lost-item?type=${type}`);
   };
 
   const renderItem = useCallback(({ item }: { item: LostItem }) => (
-      <ItemCard item={item} onPress={handlePressItem} />
-  ), [handlePressItem]);
+      <ItemCard 
+        item={item} 
+        onPress={handlePressItem} 
+        currentUserId={currentUser?.uid} 
+        onProfilePress={(uid) => setProfileUserId(uid)}
+      />
+  ), [handlePressItem, currentUser]);
 
   return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
           
-          {/* 1. Header */}
+          {/* Header */}
           <View style={styles.headerContainer}>
               {isSearching ? (
                   <View style={styles.searchBarWrapper}>
@@ -204,7 +264,7 @@ export default function LostAndFoundScreen() {
               )}
           </View>
 
-          {/* 2. Filter Tabs */}
+          {/* Filter Tabs */}
           {!isSearching && (
             <View style={styles.filterContainer}>
                 <ScrollView 
@@ -227,7 +287,7 @@ export default function LostAndFoundScreen() {
             </View>
           )}
 
-          {/* 3. List */}
+          {/* List */}
           {loading ? (
               <ActivityIndicator size="large" color="#0062ffff" style={{ marginTop: 40 }} />
           ) : (
@@ -250,7 +310,7 @@ export default function LostAndFoundScreen() {
               />
           )}
 
-          {/* 4. FAB */}
+          {/* FAB */}
           {!writeModalVisible && (
             <TouchableOpacity 
               style={styles.fab} 
@@ -261,7 +321,7 @@ export default function LostAndFoundScreen() {
             </TouchableOpacity>
           )}
 
-          {/* 5. Write Type Selection Modal */}
+          {/* Write Type Modal */}
           <Modal
             animationType="fade"
             transparent={true}
@@ -314,14 +374,20 @@ export default function LostAndFoundScreen() {
             </TouchableOpacity>
           </Modal>
 
+          {/* 프로필 모달 컴포넌트 */}
+          <UserProfileModal 
+            visible={!!profileUserId} 
+            userId={profileUserId} 
+            onClose={() => setProfileUserId(null)} 
+          />
+
       </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' }, // 전체 배경색 통일
+  container: { flex: 1, backgroundColor: '#f8f9fa' },
 
-  /* Header */
   headerContainer: { 
     backgroundColor: '#fff', 
     borderBottomWidth: 1, 
@@ -338,7 +404,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 24, fontWeight: '800', color: '#1a1a1a' },
   iconButton: { padding: 8, borderRadius: 20, backgroundColor: '#f8f9fa' },
   
-  /* Search Bar */
   searchBarWrapper: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -350,7 +415,6 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 16, color: '#333', marginLeft: 8 },
 
-  /* Filter */
   filterContainer: { backgroundColor: '#fff', paddingVertical: 12 },
   filterScroll: { paddingHorizontal: 20 },
   filterButton: { 
@@ -366,10 +430,8 @@ const styles = StyleSheet.create({
   filterText: { color: '#666', fontWeight: '600', fontSize: 14 },
   filterTextActive: { color: '#fff' },
   
-  /* List Layout */
   listContent: { padding: 20, paddingBottom: 100 },
   
-  /* Card Design */
   card: { 
     flexDirection: 'row', 
     backgroundColor: '#fff', 
@@ -398,8 +460,10 @@ const styles = StyleSheet.create({
       padding: 4
   },
 
-  textContainer: { flex: 1, justifyContent: 'space-between', paddingVertical: 4 },
+  textContainer: { flex: 1, justifyContent: 'space-between', paddingVertical: 2 },
+  
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  badgesContainer: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   badgeLost: { backgroundColor: '#ffebee' },
@@ -408,17 +472,38 @@ const styles = StyleSheet.create({
   textLost: { color: '#ff6b6b' },
   textFound: { color: '#4d96ff' },
   
+  myPostBadge: {
+    backgroundColor: '#e3f2fd',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#bbdefb'
+  },
+  myPostBadgeText: { color: '#1976d2', fontSize: 10, fontWeight: '700' },
+
   dateText: { fontSize: 12, color: '#999' },
   title: { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 4 },
-  locationRow: { flexDirection: 'row', alignItems: 'center' },
+  
+  locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   locationText: { fontSize: 13, color: '#666', flex: 1 },
+
+  // ✨ 작성자 버튼 스타일 (간결화)
+  authorRow: { alignItems: 'flex-end' },
+  authorInfoButton: {
+    backgroundColor: '#f8f9fa',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#f1f3f5'
+  },
+  authorInfoText: { fontSize: 11, color: '#888', fontWeight: '600' },
 
   emptyContainer: { alignItems: 'center', marginTop: 80 },
   emptyText: { color: '#999', fontSize: 16, marginTop: 10 },
 
-  /* FAB */
   fab: {
-
     position: 'absolute',
     bottom: Platform.OS === 'ios' ? 100 : 90,
     right: 20,
@@ -429,7 +514,6 @@ const styles = StyleSheet.create({
     elevation: 5, shadowColor: '#0062ffff', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8,
   },
 
-  /* Modal */
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center',
   },

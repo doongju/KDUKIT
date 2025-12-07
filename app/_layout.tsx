@@ -1,5 +1,3 @@
-// app/_layout.tsx
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // ✨ [추가] 알림 라이브러리 (에러 방지를 위해 * as 사용)
 import * as Notifications from 'expo-notifications';
@@ -9,7 +7,6 @@ import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 // ✨ [수정] React Hook 에러 방지를 위한 import
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-// ✨ [필수] 키보드 컨트롤러 라이브러리 import
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { auth } from '../firebaseConfig';
@@ -24,6 +21,8 @@ Notifications.setNotificationHandler({
       shouldShowAlert: true,
       shouldPlaySound: true,
       shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
     };
   },
 }as any);
@@ -41,7 +40,7 @@ export default function RootLayout() {
   // ✨ [추가] 알림 리스너 변수 (any 타입 + null 초기화로 에러 방지)
   const responseListener = useRef<any>(null);
 
-  // 1. Firebase 인증 상태 감지 (친구 코드 100% 유지)
+  // 1. Firebase 인증 상태 감지
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (isFirstCheck.current) {
@@ -72,9 +71,7 @@ export default function RootLayout() {
     return () => unsubscribe();
   }, []);
 
-
-  // 2. 네비게이션 가드 (친구 코드 유지 + 안전장치)
-
+  // 2. 네비게이션 가드
   useEffect(() => {
     if (initializing || !navigationState?.key) return;
     
@@ -128,17 +125,52 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-
-      {/* ✨ [핵심 수정] 앱 전체를 KeyboardProvider로 감싸줍니다. 
-          statusBarTranslucent: 안드로이드에서 투명 상태바 대응을 위해 켜줍니다.
-      */}
       <KeyboardProvider statusBarTranslucent>
         <StatusBar style={user ? "dark" : "light"} />
+        
         <Stack screenOptions={{ headerShown: false }}>
+          {/* 기본 화면들 */}
           <Stack.Screen name="index" /> 
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="chat" />
+
+          {/* ✨ 글쓰기 화면 애니메이션 설정 ✨
+            - presentation: 'card' (페이지 스타일)
+            - animation: 'slide_from_right' (진입: 우 -> 좌)
+            - gestureDirection: 'horizontal' (퇴장: 좌 -> 우) 
+              -> 이 옵션이 있어야 뒤로가기 시 들어왔던 방향의 반대로 자연스럽게 나갑니다.
+          */}
+          
+          <Stack.Screen 
+            name="create-lost-item" 
+            options={{
+              presentation: 'card', 
+              animation: 'slide_from_right', 
+              gestureDirection: 'horizontal', 
+              headerShown: false, 
+            }}
+          />
+
+          <Stack.Screen 
+            name="create-market" 
+            options={{
+              presentation: 'card', 
+              animation: 'slide_from_right', 
+              gestureDirection: 'horizontal', 
+              headerShown: false, 
+            }}
+          />
+
+          <Stack.Screen 
+            name="create-club" 
+            options={{
+              presentation: 'card', 
+              animation: 'slide_from_right', 
+              gestureDirection: 'horizontal', 
+              headerShown: false, 
+            }}
+          />
         </Stack>
       </KeyboardProvider>
 

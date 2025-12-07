@@ -1,10 +1,8 @@
-// app/create-market.tsx
-
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -25,7 +23,7 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { db, storage } from '../../firebaseConfig';
+import { db, storage } from '../firebaseConfig';
 
 const CATEGORIES = ['전공도서', '교양도서', '전자제품', '의류/잡화', '생활용품', '기타'];
 const MAX_IMAGES = 8; 
@@ -86,7 +84,7 @@ export default function CreateMarketScreen() {
       }
     } else {
       resetForm();
-    }// eslint-disable-next-line react-hooks/exhaustive-deps
+    }
   }, [params.postId, params.t]);
 
   const resetForm = () => {
@@ -97,19 +95,29 @@ export default function CreateMarketScreen() {
     setSelectedImages([]);
   };
 
+  // ✨ [수정됨] 권한 확인 로직 강화
   const pickImage = async () => {
     if (!currentUser) { Alert.alert("로그인 필요", "로그인이 필요합니다."); return; }
     
     if (selectedImages.length >= MAX_IMAGES) {
-        Alert.alert("알림", `최대 ${MAX_IMAGES}장까지만 등록 가능합니다.`);
-        return;
+      Alert.alert("알림", `최대 ${MAX_IMAGES}장까지만 등록 가능합니다.`);
+      return;
     }
 
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    // 1. 현재 권한 상태 확인
+    let { status } = await ImagePicker.getMediaLibraryPermissionsAsync();
+
+    // 2. 권한이 없다면 요청 (시스템 팝업)
+    if (status !== 'granted') {
+      const permissionResponse = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      status = permissionResponse.status;
+    }
+
+    // 3. 여전히 권한이 없다면 (거부됨) -> 설정으로 유도
     if (status !== 'granted') {
       Alert.alert(
         '권한 필요',
-        '설정에서 사진 라이브러리 접근 권한을 허용해주세요.',
+        '사진을 업로드하려면 갤러리 접근 권한이 필요합니다.\n설정에서 권한을 허용해주세요.',
         [
           { text: '취소', style: 'cancel' },
           { text: '설정으로 이동', onPress: () => Linking.openSettings() } 
@@ -118,10 +126,11 @@ export default function CreateMarketScreen() {
       return;
     }
 
+    // 4. 권한이 있으면 앨범 열기
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false, 
-      allowsMultipleSelection: true,
+      allowsMultipleSelection: true, // 여러 장 선택 가능
       selectionLimit: MAX_IMAGES - selectedImages.length,
       quality: 0.7,
     });
@@ -164,6 +173,18 @@ export default function CreateMarketScreen() {
     setUploadingImage(true);
     
     try {
+        // 사용자 정보(displayId) 가져오기
+        const userDocRef = doc(db, "users", currentUser.uid);
+        const userSnapshot = await getDoc(userDocRef);
+        
+        let authorName = "익명"; 
+        if (userSnapshot.exists()) {
+            const userData = userSnapshot.data();
+            if (userData.displayId) {
+                authorName = userData.displayId;
+            }
+        }
+
         const uploadPromises = selectedImages.map(uri => uploadSingleImage(uri));
         const uploadedUrls = await Promise.all(uploadPromises);
         const validUrls = uploadedUrls.filter((url): url is string => url !== null);
@@ -178,17 +199,15 @@ export default function CreateMarketScreen() {
             imageUrls: validUrls,   
             status: '판매중',
             creatorId: currentUser.uid,
-            // ✨ [핵심 수정] 여기에 type: 'market'을 추가합니다.
-            // 나중에 채팅방을 만들 때 이 값을 참조하게 됩니다.
             type: 'market', 
             updatedAt: serverTimestamp(),
+            creatorName: authorName, 
         };
 
         if (params.postId) {
             const postRef = doc(db, 'marketPosts', params.postId as string);
             await updateDoc(postRef, {
                 ...postData,
-                // 수정 시에는 createdAt을 건드리지 않습니다.
             });
             Alert.alert("수정 완료", "상품 정보가 수정되었습니다.");
         } else {
@@ -199,7 +218,7 @@ export default function CreateMarketScreen() {
             Alert.alert("등록 완료", "상품이 등록되었습니다.");
         }
       
-      router.navigate('/(tabs)/marketlist');
+      router.back();
 
     } catch (error: any) {
       if (error.code === 'permission-denied' || error.message.includes('permission-denied')) {
@@ -215,7 +234,7 @@ export default function CreateMarketScreen() {
   };
 
   const handleBack = () => {
-    router.navigate('/(tabs)/marketlist');
+    router.back();
   };
 
   const handleDescriptionFocus = () => {
@@ -230,14 +249,8 @@ export default function CreateMarketScreen() {
         <TouchableOpacity onPress={handleBack} style={styles.headerButton}>
           <Ionicons name="close" size={28} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{params.postId ? "게시글 수정" : "물건 팔기"}</Text>
-        <TouchableOpacity onPress={handleSave} disabled={isSubmitting} style={styles.headerButton}>
-           {isSubmitting ? (
-             <ActivityIndicator size="small" color="#0062ffff" />
-           ) : (
-             <Text style={styles.headerActionText}>완료</Text>
-           )}
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{params.postId ? "게시글 수정" : "내 물건 팔기"}</Text>
+        <View style={{width: 40}} /> 
       </View>
 
       <KeyboardAvoidingView 
@@ -328,11 +341,28 @@ export default function CreateMarketScreen() {
                 onChangeText={setDescription}
                 onFocus={handleDescriptionFocus}
                 onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-                textAlignVertical="center"
+                textAlignVertical="top"
                 />
             </View>
             
-            <View style={{height: 120}} /> 
+            <TouchableOpacity 
+                style={[
+                    styles.registerButton, 
+                    isSubmitting && styles.disabledButton
+                ]} 
+                onPress={handleSave}
+                disabled={isSubmitting}
+            >
+                {isSubmitting ? (
+                    <ActivityIndicator color="#fff" />
+                ) : (
+                    <Text style={styles.registerButtonText}>
+                        {params.postId ? "수정 완료" : "등록하기"}
+                    </Text>
+                )}
+            </TouchableOpacity>
+
+            <View style={{height: 60}} /> 
             </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
@@ -376,8 +406,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 17, fontWeight: '700', color: '#333' },
   headerButton: { padding: 5, minWidth: 40, alignItems: 'center' },
-  headerActionText: { fontSize: 16, fontWeight: '600', color: '#0062ffff' },
-
+  
   scrollContent: { padding: 20 },
 
   imageSection: { marginBottom: 20 },
@@ -407,7 +436,7 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: '#f1f3f5', marginVertical: 15 },
 
   input: { fontSize: 16, color: '#333', paddingVertical: 6 },
-  textArea: { minHeight: 150, lineHeight: 24 },
+  textArea: { minHeight: 150, paddingVertical: 10 },
 
   pickerButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 },
   pickerButtonText: { fontSize: 16, color: '#333', fontWeight: '500' },
@@ -415,6 +444,21 @@ const styles = StyleSheet.create({
   priceContainer: { flexDirection: 'row', alignItems: 'center' },
   currencySymbol: { fontSize: 20, fontWeight: '600', marginRight: 8 },
   priceInput: { flex: 1, fontSize: 20, fontWeight: '700', color: '#333', paddingVertical: 5 },
+
+  registerButton: { 
+    backgroundColor: '#0062ffff', // 마켓 메인 컬러
+    paddingVertical: 18, 
+    borderRadius: 12, 
+    alignItems: 'center', 
+    marginTop: 20,
+    elevation: 2, 
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  disabledButton: { backgroundColor: '#ccc' },
+  registerButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
 });
 
 const modalStyles = StyleSheet.create({

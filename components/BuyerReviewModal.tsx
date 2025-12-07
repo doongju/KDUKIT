@@ -116,7 +116,7 @@ export default function BuyerReviewModal({ visible, postData, onClose }: BuyerRe
                 </Text>
                 
                 {/* ✨ 수정된 판매자 정보 표시 */}
-                <Text style={styles.subDesc}>'{sellerName}' 님에 대한 평가를 남겨주세요.</Text>
+                <Text style={styles.subDesc}>{sellerName} 님에 대한 평가를 남겨주세요.</Text>
 
                 <TouchableOpacity style={[styles.rateButton, {backgroundColor: '#e8f5e9'}]} onPress={() => handleReview(true)}>
                     <Ionicons name="happy" size={40} color="#28a745" />

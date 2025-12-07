@@ -1,3 +1,4 @@
+import { checkTrustScoreEligibility, logTrustScoreTransaction } from '@/app/services/trustScoreService';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, doc, getDoc, getDocs, increment, query, updateDoc, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
@@ -33,7 +34,7 @@ export default function ReviewModal({ visible, postId, postTitle, sellerId, onCl
   const [step, setStep] = useState<'selectBuyer' | 'rate'>('selectBuyer');
   const [selectedBuyer, setSelectedBuyer] = useState<Candidate | null>(null);
 
-  // 1. 이 상품으로 채팅한 사람 목록 가져오기 (학번+학과+닉네임 조합)
+  // 1. 이 상품(postId)으로 채팅을 건 사람 목록 가져오기
   useEffect(() => {
     if (visible && postId) {
       fetchChatCandidates();
@@ -60,21 +61,10 @@ export default function ReviewModal({ visible, postId, postTitle, sellerId, onCl
         if (otherUid) {
           const userSnap = await getDoc(doc(db, 'users', otherUid));
           let name = "알 수 없음";
+          
           if (userSnap.exists()) {
             const d = userSnap.data();
-            
-            // ✨ [수정] 학번 + 학과 + 닉네임 표시
-            if (d.department && d.nickname) {
-                 let entryYear = "";
-                 if (d.email) {
-                     const prefix = d.email.split('@')[0];
-                     const two = prefix.substring(0, 2);
-                     if (!isNaN(Number(two)) && two.length === 2) entryYear = two;
-                 }
-                 name = `${entryYear} ${d.department} ${d.nickname}`;
-            } else if (d.name) {
-                name = d.name;
-            }
+            name = d.displayId || "익명 사용자";
           }
           list.push({ uid: otherUid, displayName: name });
         }
@@ -87,13 +77,13 @@ export default function ReviewModal({ visible, postId, postTitle, sellerId, onCl
     }
   };
 
-  // 2. 평가 및 점수 업데이트
+  // 2. 평가 및 점수 업데이트 (✨ 수정된 로직)
   const handleReview = async (isGood: boolean) => {
     if (!selectedBuyer) return;
     setLoading(true);
     
     try {
-      // A. 게시글 상태 변경
+      // A. 게시글 상태 변경 (점수 지급 여부와 상관없이 '판매완료' 처리)
       const postRef = doc(db, 'marketPosts', postId);
       await updateDoc(postRef, {
         status: '판매완료',
@@ -101,28 +91,36 @@ export default function ReviewModal({ visible, postId, postTitle, sellerId, onCl
         isBuyerReviewed: false 
       });
 
-      // B. 구매자의 신뢰 점수 업데이트
-      try {
-        const buyerRef = doc(db, 'users', selectedBuyer.uid);
-        const buyerSnap = await getDoc(buyerRef);
+      const buyerRef = doc(db, 'users', selectedBuyer.uid);
 
-        if (buyerSnap.exists()) {
-            const userData = buyerSnap.data();
+      // B. 점수 로직 분기
+      if (isGood) {
+        // 👍 [좋았어요 +3점] -> 어뷰징 체크 필요
+        const eligibility = await checkTrustScoreEligibility(selectedBuyer.uid, sellerId, 'market');
+
+        if (eligibility.allowed) {
+            // 1) 점수 지급
+            await updateDoc(buyerRef, { trustScore: increment(3) });
+            // 2) 로그 기록 (쿨타임 적용을 위해 필수)
+            await logTrustScoreTransaction(selectedBuyer.uid, sellerId, 'market', 3);
             
-            // ✨ [수정됨] 점수: +3점 / -15점
-            const scoreDelta = isGood ? 3 : -15;
-
-            if (userData.trustScore === undefined) {
-                await updateDoc(buyerRef, { trustScore: 50 + scoreDelta });
-            } else {
-                await updateDoc(buyerRef, { trustScore: increment(scoreDelta) });
-            }
+            Alert.alert("거래 완료", `${selectedBuyer.displayName}님과의 거래를 확정했습니다.\n신뢰도 점수(+3)가 반영되었습니다.`);
+        } else {
+            // 3) 자격 미달 (일일 제한 or 쿨타임) -> 점수 지급 안 함
+            Alert.alert(
+                "거래 완료", 
+                `${selectedBuyer.displayName}님과의 거래가 확정되었습니다.\n\n(점수 미반영 사유: ${eligibility.reason})`
+            );
         }
-      } catch (scoreError) {
-        console.error("점수 반영 실패 (무시함):", scoreError);
+
+      } else {
+        // 👎 [별로예요 -15점] -> 어뷰징 체크 없이 즉시 처벌 (신고 성격)
+        await updateDoc(buyerRef, { trustScore: increment(-15) });
+        
+        // *참고: 차감 기록은 로그에 남기지 않습니다 (일일 획득 제한 3회에 포함되지 않게 하기 위함)
+        Alert.alert("거래 완료", `${selectedBuyer.displayName}님과의 거래를 확정했습니다.\n상대방의 신뢰도가 차감되었습니다.`);
       }
 
-      Alert.alert("거래 완료", `${selectedBuyer.displayName}님과의 거래를 확정했습니다.\n구매자에게도 후기 요청을 보냈습니다.`);
       onComplete(); 
       onClose(); 
 
@@ -149,7 +147,7 @@ export default function ReviewModal({ visible, postId, postTitle, sellerId, onCl
             <>
               {step === 'selectBuyer' && (
                 <>
-                  <Text style={styles.subTitle}>채팅했던 이웃 목록</Text>
+                  <Text style={styles.subTitle}>채팅했던 학우 목록</Text>
                   {candidates.length === 0 ? (
                     <Text style={styles.emptyText}>채팅한 기록이 없습니다.</Text>
                   ) : (
@@ -161,7 +159,6 @@ export default function ReviewModal({ visible, postId, postTitle, sellerId, onCl
                           <Ionicons name="person-circle" size={40} color="#ccc" />
                           <View style={{marginLeft: 10}}>
                             <Text style={styles.userName}>{item.displayName}</Text>
-                            <Text style={styles.userHint}>이웃 선택하기</Text>
                           </View>
                           <Ionicons name="chevron-forward" size={20} color="#ccc" style={{marginLeft: 'auto'}} />
                         </TouchableOpacity>
@@ -173,17 +170,15 @@ export default function ReviewModal({ visible, postId, postTitle, sellerId, onCl
 
               {step === 'rate' && selectedBuyer && (
                 <View style={styles.rateContainer}>
-                  <Text style={styles.targetName}>'{selectedBuyer.displayName}'님과의 거래</Text>
+                  <Text style={styles.targetName}>{selectedBuyer.displayName}님과의 거래</Text>
                   
                   <TouchableOpacity style={[styles.rateButton, {backgroundColor: '#e8f5e9'}]} onPress={() => handleReview(true)}>
                     <Ionicons name="happy" size={40} color="#28a745" />
-                    {/* ✨ 텍스트 수정 */}
                     <Text style={[styles.rateText, {color: '#28a745'}]}>좋았어요 (+3점)</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity style={[styles.rateButton, {backgroundColor: '#ffebee'}]} onPress={() => handleReview(false)}>
                     <Ionicons name="sad" size={40} color="#ff3b30" />
-                    {/* ✨ 텍스트 수정 */}
                     <Text style={[styles.rateText, {color: '#ff3b30'}]}>별로예요 (-15점)</Text>
                   </TouchableOpacity>
 
@@ -209,8 +204,6 @@ const styles = StyleSheet.create({
   emptyText: { textAlign: 'center', color: '#999', marginVertical: 20 },
   userItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderColor: '#f0f0f0' },
   userName: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  userHint: { fontSize: 12, color: '#888' },
-  
   rateContainer: { alignItems: 'center', paddingVertical: 10 },
   targetName: { fontSize: 16, fontWeight: 'bold', marginBottom: 20 },
   rateButton: { flexDirection: 'row', alignItems: 'center', width: '100%', padding: 15, borderRadius: 12, marginBottom: 10, justifyContent: 'center' },

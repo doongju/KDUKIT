@@ -111,10 +111,6 @@ export default function TabLayout() {
 
       {/* ★★★ 나머지 파일 숨기기 (href: null) ★★★ */}
       <Tabs.Screen name="clublist" options={{ href: null }} />
-      <Tabs.Screen name="create-club" options={{ href: null }} />
-      <Tabs.Screen name="create-lost-item" options={{ href: null }} />
-      <Tabs.Screen name="create-market" options={{ href: null }} />
-      <Tabs.Screen name="create-party" options={{ href: null }} />
       <Tabs.Screen name="lost-and-found" options={{ href: null }} />
       <Tabs.Screen name="marketlist" options={{ href: null }} />
       <Tabs.Screen name="taxiparty" options={{ href: null }} />

@@ -1,5 +1,3 @@
-// app/(tabs)/marketlist.tsx
-
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
@@ -15,7 +13,7 @@ import {
 } from 'firebase/firestore';
 import { memo, useCallback, useEffect, useState } from 'react';
 import {
-  Alert, // ✨ [수정] Alert 추가됨
+  Alert,
   BackHandler,
   FlatList,
   Image,
@@ -34,7 +32,6 @@ import { db } from '../../firebaseConfig';
 import BuyerReviewModal from '../../components/BuyerReviewModal';
 import UserProfileModal from '../../components/UserProfileModal';
 
-// --- 인터페이스 ---
 interface MarketPost {
   id: string;
   title: string;
@@ -48,9 +45,11 @@ interface MarketPost {
   buyerId?: string;
   isBuyerReviewed?: boolean;
   updatedAt?: any; 
+  creatorName?: string; 
 }
 
-const MarketItem = memo(({ item, onPress, onToggleWish, onProfilePress, isWished }: any) => {
+// ✨ [수정] MarketItem: 버튼 클릭 시 바로 프로필 모달 오픈
+const MarketItem = memo(({ item, onPress, onToggleWish, onProfilePress, isWished, currentUserId }: any) => {
     let statusColor = '#0062ffff'; 
     let statusBg = '#e3f2fd';
     if (item.status === '예약중') { statusColor = '#f57c00'; statusBg = '#fff3e0'; }
@@ -59,6 +58,8 @@ const MarketItem = memo(({ item, onPress, onToggleWish, onProfilePress, isWished
     const formattedPrice = new Intl.NumberFormat('ko-KR').format(item.price);
     const thumbnail = item.imageUrl || (item.imageUrls && item.imageUrls.length > 0 ? item.imageUrls[0] : null);
     const moreImagesCount = item.imageUrls ? item.imageUrls.length - 1 : 0;
+    
+    const isMyPost = currentUserId && item.creatorId === currentUserId;
 
     return (
       <TouchableOpacity style={styles.card} onPress={() => onPress(item)} activeOpacity={0.9}>
@@ -86,13 +87,30 @@ const MarketItem = memo(({ item, onPress, onToggleWish, onProfilePress, isWished
               </View>
               <Text style={styles.categoryText}>{item.category}</Text>
           </View>
-          <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
+          
+          <View style={{flexDirection: 'row', alignItems: 'center'}}>
+            <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
+            {isMyPost && (
+                <View style={styles.myPostBadge}>
+                    <Text style={styles.myPostBadgeText}>내 상품</Text>
+                </View>
+            )}
+          </View>
+
           <Text style={styles.price}>{formattedPrice}원</Text>
+          
           <View style={styles.footerRow}>
-             <TouchableOpacity style={styles.sellerInfo} onPress={() => onProfilePress(item.creatorId)}>
-                <Ionicons name="person-circle-outline" size={16} color="#888" />
-                <Text style={styles.sellerText}>판매자 정보</Text>
+             {/* ✨ [수정] 판매자 프로필 버튼 */}
+             <TouchableOpacity 
+                style={styles.sellerInfoButton} 
+                onPress={() => onProfilePress(item.creatorId)}
+                activeOpacity={0.6}
+             >
+                <Ionicons name="person-circle-outline" size={14} color="#555" style={{marginRight: 4}}/>
+                <Text style={styles.sellerInfoText}>작성자 프로필</Text>
+                <Ionicons name="chevron-forward" size={12} color="#999" style={{marginLeft: 2}}/>
              </TouchableOpacity>
+
              <TouchableOpacity onPress={() => onToggleWish(item.id)} hitSlop={{top:10, bottom:10, left:10, right:10}}>
                  <Ionicons name={isWished ? "heart" : "heart-outline"} size={22} color={isWished ? "#ff4444" : "#ccc"} />
              </TouchableOpacity>
@@ -142,8 +160,12 @@ export default function MarketListScreen() {
       q = query(q, where('category', '==', selectedFilter));
     }
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const rawData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as MarketPost[];
-      // ... (필터 로직 생략 없이 그대로 유지)
+      const rawData = querySnapshot.docs.map(doc => ({ 
+          id: doc.id, 
+          ...doc.data(),
+          creatorName: doc.data().creatorName || "익명" 
+      })) as MarketPost[];
+      
       const now = Date.now();
       const ONE_DAY_MS = 24 * 60 * 60 * 1000;
       const filteredData = rawData.filter(post => {
@@ -195,7 +217,6 @@ export default function MarketListScreen() {
   }, [currentUser, myWishlist]);
 
   const handlePressItem = useCallback((item: MarketPost) => {
-      // ✨ [수정] 타입 에러 방지 (as any)
       router.push(`/market-detail/${item.id}` as any);
   }, [router]);
 
@@ -219,30 +240,31 @@ export default function MarketListScreen() {
         onToggleWish={handleToggleWish}
         onProfilePress={handleProfilePress}
         isWished={myWishlist.includes(item.id)}
+        currentUserId={currentUser?.uid} 
       />
-  ), [handlePressItem, handleToggleWish, handleProfilePress, myWishlist]);
+  ), [handlePressItem, handleToggleWish, handleProfilePress, myWishlist, currentUser]);
 
   return (
     <View style={styles.container}>
       {/* 헤더 및 검색창 UI */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         {isSearching ? (
-           <View style={styles.searchBar}>
-             <TouchableOpacity onPress={() => { setIsSearching(false); setSearchQuery(''); }} style={{padding:5}}>
-                 <Ionicons name="arrow-back" size={24} color="#555" />
-             </TouchableOpacity>
-             <TextInput  
+            <View style={styles.searchBar}>
+              <TouchableOpacity onPress={() => { setIsSearching(false); setSearchQuery(''); }} style={{padding:5}}>
+                  <Ionicons name="arrow-back" size={24} color="#555" />
+              </TouchableOpacity>
+              <TextInput  
                 value={searchQuery} 
                 onChangeText={setSearchQuery} 
                 autoFocus 
                 style={{flex:1, paddingHorizontal:10}}
-             />
-             {searchQuery.length > 0 && (
-                 <TouchableOpacity onPress={() => setSearchQuery('')} style={{padding:5}}>
-                     <Ionicons name="close-circle" size={20} color="#999" />
-                 </TouchableOpacity>
-             )}
-           </View>
+              />
+              {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')} style={{padding:5}}>
+                      <Ionicons name="close-circle" size={20} color="#999" />
+                  </TouchableOpacity>
+              )}
+            </View>
         ) : (
            <>
             <Text style={styles.headerTitle}>중고장터</Text>
@@ -344,11 +366,39 @@ const styles = StyleSheet.create({
   statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 6 },
   statusText: { fontSize: 11, fontWeight: 'bold' },
   categoryText: { fontSize: 12, color: '#999' },
-  title: { fontSize: 16, fontWeight: '600', color: '#333', lineHeight: 22 },
+  title: { fontSize: 16, fontWeight: '600', color: '#333', lineHeight: 22, flex: 1, marginRight: 4 }, // flex: 1 추가
   price: { fontSize: 18, fontWeight: '800', color: '#333', marginTop: 4 },
   footerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
-  sellerInfo: { flexDirection: 'row', alignItems: 'center' },
-  sellerText: { fontSize: 12, color: '#888', marginLeft: 4 },
+  
+  // ✨ [수정] 판매자 정보 버튼 스타일
+  sellerInfoButton: {
+    backgroundColor: '#f8f9fa',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#f1f3f5'
+  },
+  sellerInfoText: { fontSize: 12, color: '#666', fontWeight: '600' },
+
+  // 내 상품 배지 스타일
+  myPostBadge: {
+    backgroundColor: '#e3f2fd',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 6,
+    borderWidth: 1,
+    borderColor: '#bbdefb'
+  },
+  myPostBadgeText: {
+    color: '#1976d2',
+    fontSize: 10,
+    fontWeight: '700'
+  },
+
   fab: { 
     position: 'absolute', bottom: Platform.OS === 'ios' ? 90 : 90, right: 20, 
     backgroundColor: '#0062ffff', borderRadius: 30, 

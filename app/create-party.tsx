@@ -4,7 +4,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+// ✨ [수정] getDoc, doc 추가
+import { addDoc, collection, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { useState } from 'react';
 import {
   Alert,
@@ -19,7 +20,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { db } from '../../firebaseConfig';
+import { db } from '../firebaseConfig';
 
 // --- Constants & Data ---
 
@@ -57,7 +58,6 @@ interface PickerItemData {
   value: any;
 }
 
-// ✨ 시간표 앱과 동일한 스타일의 CustomPicker (Slide Modal)
 const CustomPicker = ({ 
   selectedValue, 
   onValueChange, 
@@ -113,7 +113,6 @@ const CustomPicker = ({
         onRequestClose={() => setShowIosPicker(false)}
       >
         <View style={pickerStyles.modalOverlay}>
-          {/* 배경 클릭 시 닫기 */}
           <TouchableOpacity style={{flex:1}} onPress={() => setShowIosPicker(false)} />
           <View style={pickerStyles.modalContent}>
             <View style={pickerStyles.modalHeader}>
@@ -169,20 +168,34 @@ export default function CreatePartyScreen() {
       return;
     }
 
-    const partyDetails = {
-      departureTime: finalDepartureTime,
-      pickupLocation: finalPickup,
-      dropoffLocation: finalDropoff,
-      memberLimit,
-      currentMembers: [user.uid], 
-      creatorId: user.uid,
-      createdAt: serverTimestamp(),
-    };
-    
     try {
+      // ✨ [추가] 사용자 정보(displayId) 가져오기
+      const userDocRef = doc(db, "users", user.uid);
+      const userSnapshot = await getDoc(userDocRef);
+      
+      let authorName = "익명"; 
+      if (userSnapshot.exists()) {
+          const userData = userSnapshot.data();
+          if (userData.displayId) {
+              authorName = userData.displayId; // 예: "12학번 컴퓨터공학과 #A123"
+          }
+      }
+
+      const partyDetails = {
+        departureTime: finalDepartureTime,
+        pickupLocation: finalPickup,
+        dropoffLocation: finalDropoff,
+        memberLimit,
+        currentMembers: [user.uid], 
+        creatorId: user.uid,
+        // ✨ [추가] 개설자 이름(식별 ID) 저장
+        creatorName: authorName,
+        createdAt: serverTimestamp(),
+      };
+      
       await addDoc(collection(db, "taxiParties"), partyDetails);
       Alert.alert('파티 생성 완료', '새로운 택시 파티가 생성되었습니다!');
-      router.replace('/(tabs)/taxiparty'); 
+      router.back();
     } catch (error: any) {
       console.error("파티 생성 중 오류 발생: ", error);
       Alert.alert("오류", "파티 생성에 실패했습니다. 다시 시도해주세요.");
@@ -193,7 +206,7 @@ export default function CreatePartyScreen() {
     <View style={styles.outerContainer}>
       <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
         <View style={styles.headerBar}>
-          <TouchableOpacity onPress={() => router.replace('/(tabs)/taxiparty')} style={styles.backButton}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="close" size={28} color="#333" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>택시 파티 만들기</Text>
@@ -386,7 +399,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 200, // 버튼 가림 방지
+    paddingBottom: 200, 
   },
 
   sectionHeader: {

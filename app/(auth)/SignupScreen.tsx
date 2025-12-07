@@ -93,23 +93,28 @@ export default function SignupScreen() {
 
 
   const validateInitialInputs = () => {
-    const nameRegex = /^[가-힣\s]{1,}$/; 
+    const nameRegex = /^[가-힣\s]{1,}$/;
+    // ✨ [추가] 학번 정규식: 숫자(\d)가 정확히 7개({7})여야 함
+    const studentIdRegex = /^\d{7}$/;
+
     if (!nameRegex.test(name) || name.trim().length === 0) {
         Alert.alert("오류", "이름은 한글만 입력 가능하며 공백이 아니어야 합니다.");
         return false;
     }
-
-    if (nickname.trim().length < 2 || nickname.trim().length > 10) {
-        Alert.alert("오류", "닉네임은 2자 이상 10자 이하로 입력해주세요.");
-        return false;
-    }
-
     if (selectedDepartment === DEPARTMENTS[0]) {
         Alert.alert("오류", "학과를 선택해주세요.");
         return false;
     }
-    if (emailId.trim().length === 0) {
-        Alert.alert("오류", "이메일 ID를 입력해주세요.");
+    // ✨ [수정] 학번 유효성 검사 로직 강화
+    const trimmedEmail = emailId.trim();
+    if (trimmedEmail.length === 0) {
+        Alert.alert("오류", "학번(이메일 ID)을 입력해주세요.");
+        return false;
+    }
+    
+    // 숫자가 아니거나 7자리가 아니면 차단
+    if (!studentIdRegex.test(trimmedEmail)) {
+        Alert.alert("오류", "학번은 7자리 숫자여야 합니다.\n(예: 2025123)");
         return false;
     }
     
@@ -208,6 +213,7 @@ export default function SignupScreen() {
   const handleSignup = async () => {
     const fullEmail = emailId + SCHOOL_DOMAIN;
     if (!validateInitialInputs() || !validateFinalInputs()) return;
+    
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, fullEmail, password);
@@ -218,10 +224,26 @@ export default function SignupScreen() {
          token = await registerForPushNotificationsAsync();
       } catch(e) { console.log("토큰 발급 실패:", e); }
 
+      // ✨ [로직 추가] 학번(앞 2자리) 추출 및 고유 코드 생성
+      // 1. 학번 추출: 입력받은 이메일 아이디의 앞에서 2글자 (예: 1234567 -> 12)
+      const studentYear = emailId.substring(0, 2); 
+      
+      // 2. 고유 코드 생성: 랜덤 4자리 (예: #A1B2)
+      const uniqueCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+
+      // 3. 전체 표시용 ID 조합 (예: 12학번 컴퓨터공학과 #A1B2)
+      const compositeId = `${studentYear}학번 ${selectedDepartment}#${uniqueCode}`;
+
+      // ✨ [수정] 회원 정보 DB 저장 (토큰, 학번, 고유코드 포함)
       await setDoc(doc(db, "users", userId), {
         name: name.trim(),
-        nickname: nickname.trim(),
         department: selectedDepartment,
+        
+        // ✨ 익명/식별용 필드 추가
+        studentYear: studentYear,   // 학번 (12)
+        uniqueCode: uniqueCode,     // 고유코드 (A1B2)
+        displayId: compositeId,     // 조합된 전체 ID
+        
         email: fullEmail,
         createdAt: new Date().toISOString(),
         
@@ -332,15 +354,6 @@ export default function SignupScreen() {
           autoCapitalize="words"
         />
 
-        <TextInput
-          placeholder="닉네임 (2~10자)"
-          placeholderTextColor="#A9A9A9"
-          value={nickname}
-          onChangeText={setNickname}
-          style={styles.input}
-          autoCapitalize="none"
-        />
-
         <View style={styles.inputLabelContainer}>
             <Text style={styles.inputLabel}>학과</Text>
         </View>
@@ -348,12 +361,15 @@ export default function SignupScreen() {
 
         <View style={styles.emailGroup}>
             <TextInput
-                placeholder="학교 이메일 ID"
+                placeholder="학번 (7자리)"
                 placeholderTextColor="#A9A9A9"
                 value={emailId}
                 onChangeText={setEmailId}
                 autoCapitalize="none"
-                keyboardType="email-address"
+                // ✨ [수정] 숫자 키패드만 나오게 설정
+                keyboardType="number-pad" 
+                // ✨ [수정] 최대 7글자까지만 입력 가능하게 제한
+                maxLength={7}
                 style={[styles.input, styles.emailIdInput]}
                 editable={!isVerified} 
             />
@@ -411,9 +427,9 @@ export default function SignupScreen() {
             </Text>
         )}
         {!isVerified && !codeSent && (
-             <Text style={[styles.statusText, {color: '#999'}]}>
-               학교 이메일을 입력하고 인증번호를 받아주세요.
-             </Text>
+              <Text style={[styles.statusText, {color: '#999'}]}>
+                학교 이메일을 입력하고 인증번호를 받아주세요.
+              </Text>
         )}
 
         <View style={{ opacity: isVerified ? 1 : 0.5 }}>

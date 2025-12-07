@@ -1,7 +1,7 @@
+// app/(tabs)/timetable.tsx
+
 import { Picker } from '@react-native-picker/picker';
 import Checkbox from 'expo-checkbox';
-// ✨ 알림 라이브러리
-import * as Notifications from 'expo-notifications';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { addDoc, collection, deleteDoc, doc, getDocs, query, updateDoc, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
@@ -43,16 +43,18 @@ interface PickerItemData {
 
 const daysOfWeek = ['월', '화', '수', '목', '금']; 
 
+// 시간 옵션: 09:30 ~ 18:30 (1시간 간격)
 const generateTimeOptions = () => {
   const options = [];
-  const startHour = 9;
-  const endHour = 19; 
+  const startValue = 9.5; 
+  const endValue = 18.5;
 
-  for (let h = startHour; h < endHour; h++) {
-    options.push({ label: `${String(h).padStart(2, '0')}:00`, value: h });
+  for (let t = startValue; t <= endValue; t += 1) {
+    const h = Math.floor(t);
+    const m = (t % 1) * 60;
+    const label = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    options.push({ label, value: t });
   }
-  options.push({ label: `${endHour}:00`, value: endHour });
-  
   return options;
 };
 
@@ -60,18 +62,32 @@ const pickerTimeOptions = generateTimeOptions();
 const gridHours = Array.from({ length: 10 }, (_, i) => 9 + i); 
 
 const parseTime = (timeString: string) => {
+  // ✨ [추가된 방어 코드] 값이 없으면(undefined/null/빈문자열) 계산 중단
+  if (!timeString) return null;
+
   if (timeString === '온라인 강의') return null;
+  
   const parts = timeString.split(' ');
+  
+  // 혹시라도 스페이스가 없어서 잘리지 않았을 경우 대비
   if (parts.length < 2) return null;
+  
   const [day, timeRange] = parts;
+  
+  // timeRange가 없을 경우 대비
+  if (!timeRange) return null;
+
   const [startTimeStr, endTimeStr] = timeRange.split('-');
   
   const shortDay = day.replace('요일', '');
 
   const parseHourMinute = (hmStr: string) => {
+    // hmStr이 깨져있을 경우 대비
+    if (!hmStr) return 0;
     const [h, m] = hmStr.split(':').map(Number);
     return h + m / 60;
   };
+
   try {
     const start = parseHourMinute(startTimeStr);
     const end = parseHourMinute(endTimeStr);
@@ -173,7 +189,6 @@ const TimetableScreen: React.FC = () => {
   const [location, setLocation] = useState('');
   
   const [selectedDay, setSelectedDay] = useState<string>('월');
-  
   const [selectedStartTime, setSelectedStartTime] = useState<number>(9.5);
   const [selectedEndTime, setSelectedEndTime] = useState<number>(10.5);
 
@@ -186,6 +201,8 @@ const TimetableScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const auth = getAuth();
   const user = auth.currentUser;
+
+  // ✨ [삭제됨] 알림 권한 요청 코드 삭제 (로그인 시 처리됨)
 
   const fetchTimetable = async () => {
     if (!user) { setLoading(false); return; }
@@ -213,46 +230,7 @@ const TimetableScreen: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // ✨ [수정됨] 백틱(`) 대신 따옴표(")와 더하기(+) 사용 (문자열 오류 방지)
-  const scheduleClassNotification = async (day: string, startTime: number, className: string) => {
-    const dayMap: { [key: string]: number } = { '월': 2, '화': 3, '수': 4, '목': 5, '금': 6 };
-    const weekday = dayMap[day.replace('요일', '')];
-    
-    if (!weekday) return;
-
-    const hour = Math.floor(startTime);
-    const minute = Math.round((startTime % 1) * 60);
-
-    // 수업 10분 전
-    let triggerHour = hour;
-    let triggerMinute = minute - 10;
-    if (triggerMinute < 0) {
-        triggerMinute += 60;
-        triggerHour -= 1;
-    }
-
-    try {
-        await Notifications.scheduleNotificationAsync({
-            content: {
-                // ✨ 여기를 일반 문자열("")로 변경했습니다.
-                title: "수업 10분 전! ⏰",
-                body: className + " 수업이 곧 시작됩니다.",
-                sound: true,
-            },
-            // @ts-ignore
-            trigger: {
-                weekday: weekday,
-                hour: triggerHour,
-                minute: triggerMinute,
-                seconds: 0,
-                repeats: true,
-            },
-        });
-        console.log(className + " 알림 예약 완료");
-    } catch (e) {
-        console.log("알림 예약 실패:", e);
-    }
-  };
+  // ✨ [삭제됨] scheduleClassNotification 함수 삭제
 
   const resetForm = () => {
     setIsEditing(false);
@@ -267,17 +245,43 @@ const TimetableScreen: React.FC = () => {
     setIsAdding(false);
   };
 
+  const checkTimeConflict = (day: string, start: number, end: number, excludeId: string | null) => {
+    const dayShort = day.replace('요일', '');
+    for (const item of timetable) {
+      if (item.isOnline) continue;
+      if (excludeId && item.id === excludeId) continue;
+      const parsed = parseTime(item.time);
+      if (!parsed) continue;
+      if (parsed.day === dayShort) {
+        if (start < parsed.end && end > parsed.start) {
+          return true; 
+        }
+      }
+    }
+    return false; 
+  };
+
   const handleAddEntry = async () => {
     if (!courseName || !user) { Alert.alert('오류', '과목명을 입력해주세요.'); return; }
-    if (!isOnline && selectedStartTime >= selectedEndTime) { Alert.alert('오류', '종료 시간은 시작 시간보다 늦어야 합니다.'); return; }
+    if (!isOnline && selectedStartTime >= selectedEndTime) { 
+        Alert.alert('오류', '종료 시간은 시작 시간보다 늦어야 합니다.'); 
+        return; 
+    }
+    const dayToSave = selectedDay.endsWith('요일') ? selectedDay : `${selectedDay}요일`;
+
+    if (!isOnline) {
+        const hasConflict = checkTimeConflict(dayToSave, selectedStartTime, selectedEndTime, currentEditId);
+        if (hasConflict) {
+            Alert.alert('중복 오류', '해당 시간에 이미 다른 수업이 있습니다.');
+            return;
+        }
+    }
 
     const formatTimeValue = (value: number) => {
       const h = Math.floor(value);
       const m = Math.round((value % 1) * 60);
       return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     };
-
-    const dayToSave = selectedDay.endsWith('요일') ? selectedDay : `${selectedDay}요일`;
 
     const formattedTime = isOnline 
       ? '온라인 강의' 
@@ -290,9 +294,7 @@ const TimetableScreen: React.FC = () => {
           courseName, professor, location: finalLocation, time: formattedTime, isOnline,
         });
         
-        if (!isOnline) {
-            await scheduleClassNotification(dayToSave, selectedStartTime, courseName);
-        }
+        // ✨ [삭제됨] 알림 예약 호출 제거
         
         Alert.alert('성공', '수정되었습니다!');
         resetForm(); 
@@ -302,12 +304,8 @@ const TimetableScreen: React.FC = () => {
           courseName, professor, location: finalLocation, time: formattedTime, userId: user.uid, isOnline, color: randomColor
         });
         
-        if (!isOnline) {
-            await scheduleClassNotification(dayToSave, selectedStartTime, courseName);
-            Alert.alert('성공', '추가되고 알림이 설정되었습니다! ⏰');
-        } else {
-            Alert.alert('성공', '추가되었습니다!');
-        }
+        // ✨ [삭제됨] 알림 예약 호출 제거
+        Alert.alert('성공', '추가되었습니다!');
         
         resetForm(); 
       }
@@ -322,9 +320,7 @@ const TimetableScreen: React.FC = () => {
     try { 
       await deleteDoc(doc(db, 'timetables', id)); 
       fetchTimetable(); 
-      if (isEditing && currentEditId === id) {
-        resetForm();
-      }
+      if (isEditing && currentEditId === id) { resetForm(); }
     } 
     catch { Alert.alert("오류", "삭제 실패"); }
   };
@@ -347,7 +343,6 @@ const TimetableScreen: React.FC = () => {
     setIsEditing(true);
     setCurrentEditId(item.id);
     setIsAdding(true);
-
     if (item.isOnline) {
       setLocation('');
     } else {
@@ -363,7 +358,6 @@ const TimetableScreen: React.FC = () => {
 
   const renderTimetableGrid = () => {
     const ROW_HEIGHT = 58; 
-
     return (
       <View style={styles.timetableGridContainer}>
         <View style={styles.dayHeaderRow}>
@@ -378,35 +372,23 @@ const TimetableScreen: React.FC = () => {
         {gridHours.map((hour, index) => (
           <View key={hour} style={[styles.timeRow, { height: ROW_HEIGHT, borderBottomWidth: index === gridHours.length -1 ? 0 : 1 }]}>
             <View style={styles.timeHeaderCell}>
-              <Text style={styles.timeHeaderText}>
-                {`${String(hour).padStart(2, '0')}:00`}
-              </Text>
+              <Text style={styles.timeHeaderText}>{`${String(hour).padStart(2, '0')}:00`}</Text>
             </View>
 
             {daysOfWeek.map(day => (
               <View key={day} style={styles.dayCell}>
                 {timetable.filter(item => !item.isOnline).map(item => {
                   const parsedTime = parseTime(item.time);
-                  
                   if (parsedTime && parsedTime.day === day) {
                     if (Math.floor(parsedTime.start) === hour) {
                       const durationInHours = parsedTime.end - parsedTime.start;
                       const blockHeight = durationInHours * ROW_HEIGHT;
                       const topOffset = (parsedTime.start - hour) * ROW_HEIGHT;
-
                       const backgroundColor = item.color || getColorByString(item.courseName);
-                      
                       return (
                         <TouchableOpacity
                           key={item.id}
-                          style={[
-                            styles.courseBlock, 
-                            { 
-                              top: topOffset + 2, 
-                              height: blockHeight - 4, 
-                              backgroundColor: backgroundColor
-                            }
-                          ]}
+                          style={[styles.courseBlock, { top: topOffset + 2, height: blockHeight - 4, backgroundColor: backgroundColor }]}
                           activeOpacity={0.8}
                           onPress={() => Alert.alert(item.courseName, `교수: ${item.professor}\n위치: ${item.location}\n시간: ${item.time}`, [
                             { text: "수정", onPress: () => handleEditStart(item) },
@@ -467,9 +449,7 @@ const TimetableScreen: React.FC = () => {
           onPress={() => setIsAdding(!isAdding)}
           activeOpacity={0.7}
         >
-          <Text style={[styles.addButtonText, isAdding && styles.addButtonTextActive]}>
-            {isAdding ? '닫기' : '추가'}
-          </Text>
+          <Text style={[styles.addButtonText, isAdding && styles.addButtonTextActive]}>{isAdding ? '닫기' : '추가'}</Text>
         </TouchableOpacity>
       </View>
       
@@ -542,7 +522,7 @@ const TimetableScreen: React.FC = () => {
 
             <View style={styles.formActionRow}>
                 {isEditing && (
-                     <TouchableOpacity style={[styles.actionButton, styles.cancelButton]} onPress={resetForm}>
+                      <TouchableOpacity style={[styles.actionButton, styles.cancelButton]} onPress={resetForm}>
                         <Text style={[styles.actionButtonText, {color:'#666'}]}>취소</Text>
                     </TouchableOpacity>
                 )}
@@ -691,7 +671,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column', 
     borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: '#fff',
+    backgroundColor: '#fff', 
     borderWidth: 1,
     borderColor: '#eee',
     shadowColor: '#000',

@@ -1,4 +1,6 @@
-const functions = require("firebase-functions");
+const functions = require("firebase-functions/v1");
+const moment = require('moment-timezone');
+const now = moment().tz('Asia/Seoul');
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
 const cors = require("cors")({ origin: true });
@@ -237,5 +239,94 @@ exports.sendTrustScoreNotification = functions.firestore
         });
 
         await sendToExpo(messagesToSend);
+    }
+  });
+// ==========================================
+// 5. 시간표 알림 스케줄러 (최종 수정 버전: 지각 방지 + moment 적용)
+// ==========================================
+exports.checkTimetableNotifications = functions.pubsub
+  .schedule('20 9-18 * * 1-5') // 테스트 끝나면 '20 9-18 * * 1-5' 로 변경하세요
+  .timeZone('Asia/Seoul')
+  .onRun(async (context) => {
+    
+    // 1. 현재 한국 시간 구하기 (moment-timezone 사용)
+    const now = moment().tz('Asia/Seoul');
+    const dayName = now.format('dddd'); // "Monday", "Sunday"...
+    
+    // 요일 한글 변환
+    const dayMap = { 
+        'Sunday': '일요일', 'Monday': '월요일', 'Tuesday': '화요일', 
+        'Wednesday': '수요일', 'Thursday': '목요일', 'Friday': '금요일', 'Saturday': '토요일' 
+    };
+    const currentDayKorean = dayMap[dayName];
+
+    // 2. 검색 기준 시간 설정 (지금으로부터 10분 뒤 수업을 찾음)
+    const targetTime = now.clone().add(10, 'minutes'); 
+    
+    // 비교를 위해 '시.분' 소수점으로 변환 (예: 2시 30분 -> 2.5)
+    const targetValue = targetTime.hour() + (targetTime.minute() / 60);
+
+    // 🚨 핵심 수정: 검색 범위를 앞뒤 5분(0.08)으로 넉넉하게 잡음
+    // 서버가 1~2분 늦게 켜져도 여기서 다 걸림
+    const minRange = targetValue - 0.08; 
+    const maxRange = targetValue + 0.08; 
+
+    console.log(`[KST] 현재: ${now.format('HH:mm')}, 타겟: ${targetTime.format('HH:mm')} (${currentDayKorean})`);
+    console.log(`[검색 범위] ${minRange.toFixed(2)} ~ ${maxRange.toFixed(2)} 사이 수업`);
+
+    try {
+      const snapshot = await admin.firestore().collection('timetables').get();
+      const messagesToSend = [];
+
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        // 데이터 없거나 온라인 강의면 패스
+        if (!data.time || data.isOnline) return;
+
+        // DB 형식: "일요일 02:30-03:30"
+        const parts = data.time.split(' ');
+        if (parts.length < 2) return;
+        
+        const dayStr = parts[0]; 
+        const timeRange = parts[1];
+        const startTimeStr = timeRange.split('-')[0]; // "02:30"
+        
+        const [h, m] = startTimeStr.split(':').map(Number);
+        const startTimeVal = h + (m / 60);
+
+        // 요일 일치 & 시간 범위 일치 확인
+        if (dayStr === currentDayKorean && startTimeVal >= minRange && startTimeVal <= maxRange) {
+           messagesToSend.push({
+             uid: data.userId,
+             courseName: data.courseName,
+             location: data.location
+           });
+        }
+      });
+
+      if (messagesToSend.length === 0) {
+          console.log("📭 보낼 알림 없음");
+          return;
+      }
+
+      // 알림 발송
+      await Promise.all(messagesToSend.map(async (item) => {
+        const userSnap = await admin.firestore().collection('users').doc(item.uid).get();
+        const userData = userSnap.data();
+
+        if (userData && userData.pushToken && userData.pushToken.startsWith("ExponentPushToken")) {
+           await sendToExpo([{
+             to: userData.pushToken,
+             title: "수업 10분 전! ⏰",
+             body: `${item.courseName} 수업이 곧 시작됩니다. (${item.location})`,
+             data: { url: "/(tabs)/timetable" },
+             sound: 'default'
+           }]);
+           console.log(`✅ 발송 성공: ${item.courseName} -> ${userData.name || '유저'}`);
+        }
+      }));
+
+    } catch (error) {
+      console.error("❌ 스케줄러 에러:", error);
     }
   });
