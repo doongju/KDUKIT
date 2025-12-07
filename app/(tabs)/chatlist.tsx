@@ -1,8 +1,9 @@
+// app/(tabs)/chatlist.tsx
+
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { arrayRemove, collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
-// ✨ [수정] useRef 추가
 import { memo, useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -23,11 +24,13 @@ interface ChatRoom {
   lastMessage?: string;
   lastMessageTimestamp?: any;
   members: string[];
-  // ✨ [수정] 'lost-item' 타입 추가
-  type: 'private' | 'party' | 'dm' | 'club' | 'market' | 'lost-item' | string; 
+  type: 'private' | 'party' | 'dm' | 'club' | 'market' | 'lost-item' | string;
+  // ✨ [복구] 안 읽은 갯수 필드 추가
+  unreadCounts?: { [uid: string]: number }; 
 }
 
-const ChatRoomItem = memo(({ item, onPress, onLongPress }: { item: ChatRoom, onPress: (id: string) => void, onLongPress: (id: string, name: string) => void }) => {
+// ✨ [수정] unreadCount prop 추가
+const ChatRoomItem = memo(({ item, onPress, onLongPress, unreadCount }: { item: ChatRoom, onPress: (id: string) => void, onLongPress: (id: string, name: string) => void, unreadCount: number }) => {
   
   let iconName: keyof typeof Ionicons.glyphMap = "chatbubble-ellipses";
   let iconColor = "#0062ffff";
@@ -74,10 +77,6 @@ const ChatRoomItem = memo(({ item, onPress, onLongPress }: { item: ChatRoom, onP
       break;
   }
 
-  const timeString = item.lastMessageTimestamp
-    ? new Date(item.lastMessageTimestamp.toDate()).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
-    : '';
-
   return (
     <TouchableOpacity
       style={styles.cardContainer}
@@ -92,7 +91,7 @@ const ChatRoomItem = memo(({ item, onPress, onLongPress }: { item: ChatRoom, onP
 
       <View style={styles.cardContent}>
         <View style={styles.cardHeader}>
-          {/* 배지 표시 */}
+          {/* 타입 표시 (택시, 동아리 등) */}
           <View style={[styles.badge, { backgroundColor: badgeColor }]}>
             <Text style={[styles.badgeText, { color: badgeTextColor }]}>{badgeText}</Text>
           </View>
@@ -106,13 +105,23 @@ const ChatRoomItem = memo(({ item, onPress, onLongPress }: { item: ChatRoom, onP
             <Text style={styles.lastMessage} numberOfLines={1}>
               {item.lastMessage || "대화 내용이 없습니다."}
             </Text>
+
+            {/* ✨ [복구] 안 읽은 메시지 뱃지 (빨간색) */}
+            {unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadBadgeText}>
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                    </Text>
+                </View>
+            )}
         </View>
       </View>
     </TouchableOpacity>
   );
 }, (prev, next) => {
   return prev.item.lastMessage === next.item.lastMessage &&
-         prev.item.lastMessageTimestamp?.toMillis() === next.item.lastMessageTimestamp?.toMillis();
+         prev.item.lastMessageTimestamp?.toMillis() === next.item.lastMessageTimestamp?.toMillis() &&
+         prev.unreadCount === next.unreadCount; // ✨ 뱃지 숫자 바뀌면 리렌더링
 });
 ChatRoomItem.displayName = 'ChatRoomItem';
 
@@ -125,7 +134,7 @@ export default function ChatListScreen() {
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ✨ [추가] 중복 진입 방지용 Ref
+  // 중복 진입 방지용 Ref (유지됨)
   const isNavigatingRef = useRef(false);
 
   useFocusEffect(
@@ -157,6 +166,7 @@ export default function ChatListScreen() {
                 lastMessageTimestamp: data.lastMessageTimestamp,
                 members: data.members,
                 type: data.type || 'dm',
+                unreadCounts: data.unreadCounts, // ✨ 데이터 가져오기
             });
         });
         rooms.sort((a, b) => (b.lastMessageTimestamp?.toMillis() || 0) - (a.lastMessageTimestamp?.toMillis() || 0));
@@ -168,15 +178,12 @@ export default function ChatListScreen() {
   );
 
   const handleChatRoomPress = useCallback((chatRoomId: string) => {
-    // ✨ [수정] 이미 이동 중이면 무시 (즉시 차단)
     if (isNavigatingRef.current) return;
 
-    // ✨ [수정] 잠금 설정
     isNavigatingRef.current = true;
 
     router.push(`/chat/${chatRoomId}`);
 
-    // ✨ [수정] 화면 전환 애니메이션 시간 동안 잠금 유지 (1.5초)
     setTimeout(() => {
       isNavigatingRef.current = false;
     }, 1500);
@@ -194,9 +201,19 @@ export default function ChatListScreen() {
     ]);
   }, [currentUser]);
 
-  const renderItem = useCallback(({ item }: { item: ChatRoom }) => (
-    <ChatRoomItem item={item} onPress={handleChatRoomPress} onLongPress={handleLongPressChatRoom} />
-  ), [handleChatRoomPress, handleLongPressChatRoom]);
+  const renderItem = useCallback(({ item }: { item: ChatRoom }) => {
+    // ✨ 내 안 읽은 갯수 계산
+    const myUnreadCount = item.unreadCounts?.[currentUser?.uid || ''] || 0;
+
+    return (
+        <ChatRoomItem 
+            item={item} 
+            onPress={handleChatRoomPress} 
+            onLongPress={handleLongPressChatRoom} 
+            unreadCount={myUnreadCount} // ✨ prop 전달
+        />
+    );
+  }, [handleChatRoomPress, handleLongPressChatRoom, currentUser]);
 
   if (!currentUser) return null;
 
@@ -307,6 +324,24 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 10,
   },
+  
+  // ✨ [복구] 빨간색 뱃지 스타일
+  unreadBadge: {
+    backgroundColor: '#ff3b30',
+    borderRadius: 12,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    marginLeft: 8,
+  },
+  unreadBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+
   timestamp: {
     fontSize: 12,
     color: '#999',

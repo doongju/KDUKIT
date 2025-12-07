@@ -1,7 +1,8 @@
+// app/chat/[id].tsx
+
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-// ✨ [수정] arrayUnion, arrayRemove 추가됨
 import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -37,7 +38,7 @@ interface ChatRoom {
   lastReadBy: { [uid: string]: Timestamp | null };
 }
 
-// ✨ [최적화] 아이콘 스타일 가져오는 함수
+// 아이콘 스타일
 const getChatIconStyle = (type: string | undefined) => {
   let iconName: keyof typeof Ionicons.glyphMap = "chatbubble-ellipses";
   let iconColor = "#0062ffff";
@@ -68,7 +69,7 @@ const getChatIconStyle = (type: string | undefined) => {
   return { iconName, iconColor, iconBg };
 };
 
-// ✨ 커스텀 헤더
+// 헤더
 const ChatHeader = memo(({ name, type }: { name: string, type?: string }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -93,7 +94,7 @@ const ChatHeader = memo(({ name, type }: { name: string, type?: string }) => {
 });
 ChatHeader.displayName = 'ChatHeader';
 
-// ✨ 메시지 아이템
+// ✨ [수정] 메시지 아이템 (숫자 표시 복구됨)
 const MessageItem = memo(({ item, isMyMessage, displayName, onPressAvatar, unreadCount }: any) => {
   const displayTime = useMemo(() => 
     item.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 
@@ -111,14 +112,21 @@ const MessageItem = memo(({ item, isMyMessage, displayName, onPressAvatar, unrea
       <View style={styles.contentColumn}>
         {!isMyMessage && <Text style={styles.senderName}>{displayName}</Text>}
         <View style={[styles.bubbleWrapper, isMyMessage ? styles.myBubbleWrapper : styles.otherBubbleWrapper]}>
+           
+           {/* ✨ 내 메시지일 때: 왼쪽에 시간과 숫자 표시 */}
            {isMyMessage && (
             <View style={styles.statusAndTimeContainer}>
+              {/* ✨ [복구] 안 읽은 숫자 표시 (0보다 클 때만) */}
+              {unreadCount > 0 && <Text style={styles.readCountText}>{unreadCount}</Text>}
               <Text style={styles.timestamp}>{displayTime}</Text>
             </View>
           )}
+
           <View style={isMyMessage ? styles.myBubble : styles.otherBubble}>
             <Text style={isMyMessage ? styles.myText : styles.otherText}>{item.text}</Text>
           </View>
+
+          {/* 상대방 메시지일 때: 오른쪽에 시간 표시 */}
           {!isMyMessage && (
             <View style={styles.statusAndTimeContainer}>
               <Text style={styles.timestamp}>{displayTime}</Text>
@@ -132,12 +140,13 @@ const MessageItem = memo(({ item, isMyMessage, displayName, onPressAvatar, unrea
   return (
     prev.item._id === next.item._id && 
     prev.displayName === next.displayName &&
-    prev.item.text === next.item.text 
+    prev.item.text === next.item.text &&
+    prev.unreadCount === next.unreadCount // ✨ 숫자가 바뀌면 리렌더링
   );
 });
 MessageItem.displayName = "MessageItem";
 
-// ✨ 입력창 컴포넌트
+// 입력창
 const ChatInput = memo(({ onSend, paddingBottom }: { onSend: (text: string) => void, paddingBottom: number }) => {
   const [text, setText] = useState('');
 
@@ -192,29 +201,26 @@ export default function ChatRoomScreen() {
   const currentUserId = user?.uid;
   const flatListRef = useRef<FlatList>(null);
 
-  // ✨ [수정 1] 입장/퇴장 관리 (activeUsers 등록 및 해제)
-  // - 입장 시: activeUsers에 내 ID 추가 + 뱃지(unreadCounts) 0으로 초기화
-  // - 퇴장 시: activeUsers에서 내 ID 제거 -> 그래야 알림 다시 옴
+  // 입장/퇴장 관리
   useEffect(() => {
     if (chatRoomId && currentUserId) {
         const roomRef = doc(db, 'chatRooms', chatRoomId);
         
         // 1. 입장 로직
         updateDoc(roomRef, {
-            activeUsers: arrayUnion(currentUserId),       // 접속자 명단에 추가
-            [`unreadCounts.${currentUserId}`]: 0          // 뱃지 숫자 0으로
+            activeUsers: arrayUnion(currentUserId),
+            [`unreadCounts.${currentUserId}`]: 0
         }).catch(err => console.log("입장 처리 실패:", err));
 
-        // 2. 퇴장 로직 (Component Unmount 시 실행)
+        // 2. 퇴장 로직
         return () => {
             updateDoc(roomRef, {
-                activeUsers: arrayRemove(currentUserId)   // 접속자 명단에서 제거
+                activeUsers: arrayRemove(currentUserId)
             }).catch(err => console.log("퇴장 처리 실패:", err));
         };
     }
   }, [chatRoomId, currentUserId]);
 
-  // ✨ 스크롤 함수 최적화
   const scrollToBottom = useCallback((animated = true) => {
     if (messages.length > 0) {
       flatListRef.current?.scrollToOffset({ offset: 0, animated });
@@ -237,19 +243,18 @@ export default function ChatRoomScreen() {
     return () => { showSub.remove(); hideSub.remove(); };
   }, [scrollToBottom]);
 
-  // ✨ [수정 2] 실시간 읽음 처리 (lastReadBy + 뱃지 초기화 동시 처리)
-  // 메시지가 새로 오거나 화면이 갱신될 때마다 실행
+  // 읽음 처리 업데이트
   const updateLastRead = useCallback(async () => {
     if (!chatRoomId || !currentUserId) return;
     try {
       await updateDoc(doc(db, 'chatRooms', chatRoomId), {
         [`lastReadBy.${currentUserId}`]: serverTimestamp(),
-        [`unreadCounts.${currentUserId}`]: 0  // 메시지를 보고 있는 중이므로 계속 0으로 유지
+        [`unreadCounts.${currentUserId}`]: 0
       });
     } catch (e) { console.log("Update read failed", e); }
   }, [chatRoomId, currentUserId]);
 
-  // 채팅방 정보 로드
+  // 채팅방 정보
   useEffect(() => {
     if (!chatRoomId) return;
     const unsub = onSnapshot(doc(db, 'chatRooms', chatRoomId), (docSnap) => {
@@ -298,14 +303,14 @@ export default function ChatRoomScreen() {
     fetchMissingNames();
   }, [chatRoom?.members]);
 
-  // ✨ [수정 3] 메시지 변경 감지 -> 읽음 처리 실행
+  // 메시지 업데이트 감지
   useEffect(() => {
     if (messages.length > 0) {
         updateLastRead();
     }
   }, [messages, updateLastRead]);
 
-  // 메시지 및 차단 리스너
+  // 메시지 로드
   useEffect(() => {
     if (!chatRoomId || !currentUserId) return;
 
@@ -372,6 +377,7 @@ export default function ChatRoomScreen() {
         isMyMessage={isMyMessage}
         displayName={displayName}
         onPressAvatar={setProfileUserId}
+        unreadCount={unreadCount}
       />
     );
   }, [currentUserId, chatRoom, userDisplayNames, myBlockedUsers]);
@@ -513,6 +519,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end' 
   },
   timestamp: { fontSize: 10, color: '#aaa' },
+  // ✨ [추가] 숫자 뱃지 스타일
+  readCountText: { 
+    fontSize: 10, 
+    color: '#0062ffff', 
+    fontWeight: 'bold', 
+    marginBottom: 2 
+  },
 
   inputWrapper: { 
     backgroundColor: '#fff', 
