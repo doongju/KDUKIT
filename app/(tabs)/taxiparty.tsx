@@ -14,7 +14,6 @@ import {
   setDoc,
   updateDoc
 } from 'firebase/firestore';
-// ✨ [수정] useRef 추가
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -65,7 +64,6 @@ const MemberSlots = ({ current, limit }: { current: number, limit: number }) => 
   );
 };
 
-// ✨ [수정] isNavigating prop 추가하여 버튼 제어
 const PartyItem = memo(({ item, currentUserId, onPressProfile, onJoin, onChat, onFinish, onDelete, isNavigating }: any) => {
     const isCreator = currentUserId && currentUserId === item.creatorId;
     const isMember = currentUserId && item.currentMembers.includes(currentUserId);
@@ -157,7 +155,6 @@ const PartyItem = memo(({ item, currentUserId, onPressProfile, onJoin, onChat, o
              </View>
           ) : isMember ? (
             <TouchableOpacity 
-                // ✨ [수정] Navigating 중일 때 스타일 및 비활성화
                 style={[styles.chatBtn, isNavigating && { opacity: 0.7, backgroundColor: '#a5d6a7' }]} 
                 onPress={() => onChat(item.id, item.pickupLocation, item.dropoffLocation)}
                 disabled={isNavigating}
@@ -173,7 +170,6 @@ const PartyItem = memo(({ item, currentUserId, onPressProfile, onJoin, onChat, o
             </TouchableOpacity>
           ) : (
             <TouchableOpacity 
-              // ✨ [수정] Navigating 중일 때 스타일 및 비활성화
               style={[styles.joinBtn, (isFull || isNavigating) && styles.disabledBtn]} 
               onPress={() => onJoin(item)}
               disabled={isFull || isNavigating}
@@ -203,7 +199,6 @@ export default function TaxiPartyScreen() {
   
   const [finishParty, setFinishParty] = useState<TaxiParty | null>(null);
 
-  // ✨ [추가] 중복 진입 방지 상태 및 Ref
   const [isNavigating, setIsNavigating] = useState(false);
   const isNavigatingRef = useRef(false);
 
@@ -235,11 +230,36 @@ export default function TaxiPartyScreen() {
     ]);
   };
 
+  // ✨ [수정] 운행 완료 처리 로직 변경
   const handleFinishParty = (party: TaxiParty) => {
+    // 1. 나 혼자 탑승한 경우 (멤버 수가 1명)
+    if (party.currentMembers.length === 1) {
+        Alert.alert(
+            "나홀로 탑승", 
+            "택시 탑승 인원이 작성자 뿐이라서 게시글이 삭제됩니다.\n신뢰도, 페널티는 없습니다.",
+            [
+                { text: "취소", style: "cancel" },
+                { 
+                    text: "확인 및 삭제", 
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            // 평가 로직 없이 바로 삭제
+                            await deleteDoc(doc(db, "taxiParties", party.id));
+                        } catch (e) {
+                            Alert.alert("오류", "삭제 중 문제가 발생했습니다.");
+                        }
+                    }
+                }
+            ]
+        );
+        return; // 여기서 함수 종료 (모달 안 띄움)
+    }
+
+    // 2. 동승자가 있는 경우 -> 기존대로 평가 모달 띄우기
     setFinishParty(party);
   };
 
-  // ✨ [추가] 채팅방 생성 및 이동 로직 (잠금 제어 없이 순수 기능만 수행)
   const processEnterChat = async (partyId: string, pickupLocation: string, dropoffLocation: string) => {
     if (!user) return;
 
@@ -264,7 +284,6 @@ export default function TaxiPartyScreen() {
 
         router.push(`/chat/${chatRoomId}`);
         
-        // 화면 전환 시간 동안 잠금 유지 후 해제
         setTimeout(() => {
             isNavigatingRef.current = false;
             setIsNavigating(false);
@@ -272,13 +291,11 @@ export default function TaxiPartyScreen() {
 
     } catch (e) { 
         console.error(e);
-        // 에러 발생 시 즉시 해제
         isNavigatingRef.current = false;
         setIsNavigating(false);
     }
   };
 
-  // ✨ [수정] '채팅방 입장' 버튼 핸들러 (잠금 적용)
   const handleEnterChatButton = async (partyId: string, pickupLocation: string, dropoffLocation: string) => {
     if (isNavigatingRef.current) return;
     
@@ -288,17 +305,14 @@ export default function TaxiPartyScreen() {
     await processEnterChat(partyId, pickupLocation, dropoffLocation);
   };
 
-  // ✨ [수정] '참여하기' 버튼 핸들러 (잠금 적용)
   const handleJoinParty = async (party: TaxiParty) => {
     if (!user) { Alert.alert("로그인 필요", "로그인이 필요합니다."); return; }
     
-    // 이미 멤버라면 바로 채팅방으로 (중복 방지 적용)
     if (party.currentMembers.includes(user.uid)) {
         handleEnterChatButton(party.id, party.pickupLocation, party.dropoffLocation);
         return;
     }
     
-    // 잠금 상태면 무시
     if (isNavigatingRef.current) return;
 
     if (party.currentMembers.length >= party.memberLimit) {
@@ -309,7 +323,6 @@ export default function TaxiPartyScreen() {
     Alert.alert("참여", "파티에 참여하시겠습니까?", [
         { text: "취소", style: "cancel" },
         { text: "참여", onPress: async () => {
-            // Alert 확인 후 실행 시점에 잠금
             if (isNavigatingRef.current) return;
             
             isNavigatingRef.current = true;
@@ -317,7 +330,6 @@ export default function TaxiPartyScreen() {
 
             try {
                 await updateDoc(doc(db, "taxiParties", party.id), { currentMembers: arrayUnion(user.uid) });
-                // DB 업데이트 후 채팅방 이동 로직 실행 (이미 잠금 상태이므로 내부 로직만 호출)
                 await processEnterChat(party.id, party.pickupLocation, party.dropoffLocation);
             } catch (e) {
                 console.error(e);
@@ -334,12 +346,12 @@ export default function TaxiPartyScreen() {
         currentUserId={user?.uid} 
         onPressProfile={setProfileUserId}
         onJoin={handleJoinParty}
-        onChat={handleEnterChatButton} // ✨ 수정된 핸들러 연결
-        onFinish={handleFinishParty} 
+        onChat={handleEnterChatButton} 
+        onFinish={handleFinishParty} // ✨ 수정된 함수 전달
         onDelete={handleDeleteParty}
-        isNavigating={isNavigating} // ✨ 상태 전달
+        isNavigating={isNavigating} 
       />
-  ), [user, isNavigating]); // ✨ 의존성 추가
+  ), [user, isNavigating]);
 
   return (
     <View style={[styles.container]}>
