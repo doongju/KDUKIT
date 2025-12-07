@@ -1,7 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
+<<<<<<< HEAD
 import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
+=======
+// ✨ [수정] arrayUnion, arrayRemove 추가됨
+import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
+>>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -35,7 +40,11 @@ interface ChatRoom {
   type?: string;
 }
 
+<<<<<<< HEAD
 // 아이콘 스타일
+=======
+// ✨ [최적화] 아이콘 스타일 가져오는 함수
+>>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
 const getChatIconStyle = (type: string | undefined) => {
   let iconName: keyof typeof Ionicons.glyphMap = "chatbubble-ellipses";
   let iconColor = "#0062ffff";
@@ -66,7 +75,7 @@ const getChatIconStyle = (type: string | undefined) => {
   return { iconName, iconColor, iconBg };
 };
 
-// 헤더 컴포넌트
+// ✨ 커스텀 헤더
 const ChatHeader = memo(({ name, type }: { name: string, type?: string }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -91,8 +100,8 @@ const ChatHeader = memo(({ name, type }: { name: string, type?: string }) => {
 });
 ChatHeader.displayName = 'ChatHeader';
 
-// 메시지 아이템
-const MessageItem = memo(({ item, isMyMessage, displayName, onPressAvatar }: any) => {
+// ✨ 메시지 아이템
+const MessageItem = memo(({ item, isMyMessage, displayName, onPressAvatar, unreadCount }: any) => {
   const displayTime = useMemo(() => 
     item.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 
   [item.createdAt]);
@@ -130,12 +139,12 @@ const MessageItem = memo(({ item, isMyMessage, displayName, onPressAvatar }: any
   return (
     prev.item._id === next.item._id && 
     prev.displayName === next.displayName &&
-    prev.item.text === next.item.text
+    prev.item.text === next.item.text 
   );
 });
 MessageItem.displayName = "MessageItem";
 
-// 입력창
+// ✨ 입력창 컴포넌트
 const ChatInput = memo(({ onSend, paddingBottom }: { onSend: (text: string) => void, paddingBottom: number }) => {
   const [text, setText] = useState('');
 
@@ -190,12 +199,39 @@ export default function ChatRoomScreen() {
   const currentUserId = user?.uid;
   const flatListRef = useRef<FlatList>(null);
 
+  // ✨ [수정 1] 입장/퇴장 관리 (activeUsers 등록 및 해제)
+  // - 입장 시: activeUsers에 내 ID 추가 + 뱃지(unreadCounts) 0으로 초기화
+  // - 퇴장 시: activeUsers에서 내 ID 제거 -> 그래야 알림 다시 옴
+  useEffect(() => {
+    if (chatRoomId && currentUserId) {
+        const roomRef = doc(db, 'chatRooms', chatRoomId);
+        
+        // 1. 입장 로직
+        updateDoc(roomRef, {
+            activeUsers: arrayUnion(currentUserId),       // 접속자 명단에 추가
+            [`unreadCounts.${currentUserId}`]: 0          // 뱃지 숫자 0으로
+        }).catch(err => console.log("입장 처리 실패:", err));
+
+        // 2. 퇴장 로직 (Component Unmount 시 실행)
+        return () => {
+            updateDoc(roomRef, {
+                activeUsers: arrayRemove(currentUserId)   // 접속자 명단에서 제거
+            }).catch(err => console.log("퇴장 처리 실패:", err));
+        };
+    }
+  }, [chatRoomId, currentUserId]);
+
+  // ✨ 스크롤 함수 최적화
   const scrollToBottom = useCallback((animated = true) => {
     if (messages.length > 0) {
       flatListRef.current?.scrollToOffset({ offset: 0, animated });
     }
   }, [messages.length]);
 
+<<<<<<< HEAD
+=======
+  // 키보드 리스너
+>>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
   useEffect(() => {
     const showSub = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
@@ -211,6 +247,22 @@ export default function ChatRoomScreen() {
     return () => { showSub.remove(); hideSub.remove(); };
   }, [scrollToBottom]);
 
+<<<<<<< HEAD
+=======
+  // ✨ [수정 2] 실시간 읽음 처리 (lastReadBy + 뱃지 초기화 동시 처리)
+  // 메시지가 새로 오거나 화면이 갱신될 때마다 실행
+  const updateLastRead = useCallback(async () => {
+    if (!chatRoomId || !currentUserId) return;
+    try {
+      await updateDoc(doc(db, 'chatRooms', chatRoomId), {
+        [`lastReadBy.${currentUserId}`]: serverTimestamp(),
+        [`unreadCounts.${currentUserId}`]: 0  // 메시지를 보고 있는 중이므로 계속 0으로 유지
+      });
+    } catch (e) { console.log("Update read failed", e); }
+  }, [chatRoomId, currentUserId]);
+
+  // 채팅방 정보 로드
+>>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
   useEffect(() => {
     if (!chatRoomId) return;
     const unsub = onSnapshot(doc(db, 'chatRooms', chatRoomId), (docSnap) => {
@@ -224,6 +276,10 @@ export default function ChatRoomScreen() {
     return () => unsub();
   }, [chatRoomId, navigation]);
 
+<<<<<<< HEAD
+=======
+  // 멤버 이름 로드
+>>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
   useEffect(() => {
     if (!chatRoom?.members) return;
     
@@ -258,6 +314,17 @@ export default function ChatRoomScreen() {
     fetchMissingNames();
   }, [chatRoom?.members]);
 
+<<<<<<< HEAD
+=======
+  // ✨ [수정 3] 메시지 변경 감지 -> 읽음 처리 실행
+  useEffect(() => {
+    if (messages.length > 0) {
+        updateLastRead();
+    }
+  }, [messages, updateLastRead]);
+
+  // 메시지 및 차단 리스너
+>>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
   useEffect(() => {
     if (!chatRoomId || !currentUserId) return;
 
@@ -310,6 +377,17 @@ export default function ChatRoomScreen() {
     const isMyMessage = item.senderId === currentUserId;
     const displayName = userDisplayNames[item.senderId] || '...';
     
+<<<<<<< HEAD
+=======
+    let unreadCount = 0;
+    if (isMyMessage && chatRoom) {
+      const others = chatRoom.members.filter(id => id !== currentUserId);
+      others.forEach(uid => {
+        const last = chatRoom.lastReadBy?.[uid]?.toDate();
+        if (!last || item.createdAt.getTime() > last.getTime()) unreadCount++;
+      });
+    }
+>>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
     return (
       <MessageItem
         item={item}
@@ -318,7 +396,11 @@ export default function ChatRoomScreen() {
         onPressAvatar={setProfileUserId}
       />
     );
+<<<<<<< HEAD
   }, [currentUserId, userDisplayNames, myBlockedUsers]);
+=======
+  }, [currentUserId, chatRoom, userDisplayNames, myBlockedUsers]);
+>>>>>>> ec0e58d651b1b4c03a15a621de7dc81183edbad5
 
   const keyExtractor = useCallback((item: IMessage) => item._id, []);
   const reversedMessages = useMemo(() => [...messages].reverse(), [messages]);

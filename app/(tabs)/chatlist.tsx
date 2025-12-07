@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { arrayRemove, collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
-import { memo, useCallback, useState } from 'react';
+// ✨ [수정] useRef 추가
+import { memo, useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,12 +23,12 @@ interface ChatRoom {
   lastMessage?: string;
   lastMessageTimestamp?: any;
   members: string[];
-  type: 'private' | 'party' | 'dm' | 'club' | 'market' | 'lost-item' | string;
+  // ✨ [수정] 'lost-item' 타입 추가
+  type: 'private' | 'party' | 'dm' | 'club' | 'market' | 'lost-item' | string; 
 }
 
 const ChatRoomItem = memo(({ item, onPress, onLongPress }: { item: ChatRoom, onPress: (id: string) => void, onLongPress: (id: string, name: string) => void }) => {
   
-  // 기본 설정 (1:1 채팅)
   let iconName: keyof typeof Ionicons.glyphMap = "chatbubble-ellipses";
   let iconColor = "#0062ffff";
   let iconBg = "#e8f0fe";
@@ -35,7 +36,6 @@ const ChatRoomItem = memo(({ item, onPress, onLongPress }: { item: ChatRoom, onP
   let badgeColor = "#f0f8ff";
   let badgeTextColor = "#0062ffff";
 
-  // 타입별 스타일 분기 처리
   switch (item.type) {
     case 'party':
       iconName = "car";
@@ -86,24 +86,20 @@ const ChatRoomItem = memo(({ item, onPress, onLongPress }: { item: ChatRoom, onP
       delayLongPress={500}
       activeOpacity={0.7}
     >
-      {/* 아이콘 영역 */}
       <View style={[styles.cardIcon, { backgroundColor: iconBg }]}>
         <Ionicons name={iconName} size={26} color={iconColor} />
       </View>
 
-      {/* 정보 영역 */}
       <View style={styles.cardContent}>
         <View style={styles.cardHeader}>
-          <View style={styles.headerLeft}>
-             {/* 배지 표시 */}
-            <View style={[styles.badge, { backgroundColor: badgeColor }]}>
-                <Text style={[styles.badgeText, { color: badgeTextColor }]}>{badgeText}</Text>
-            </View>
-            <Text style={styles.roomName} numberOfLines={1}>
-                {item.name}
-            </Text>
+          {/* 배지 표시 */}
+          <View style={[styles.badge, { backgroundColor: badgeColor }]}>
+            <Text style={[styles.badgeText, { color: badgeTextColor }]}>{badgeText}</Text>
           </View>
-          <Text style={styles.timestamp}>{timeString}</Text>
+          
+          <Text style={styles.roomName} numberOfLines={1}>
+            {item.name}
+          </Text>
         </View>
 
         <View style={styles.messageRow}>
@@ -128,6 +124,9 @@ export default function ChatListScreen() {
 
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // ✨ [추가] 중복 진입 방지용 Ref
+  const isNavigatingRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -169,7 +168,18 @@ export default function ChatListScreen() {
   );
 
   const handleChatRoomPress = useCallback((chatRoomId: string) => {
+    // ✨ [수정] 이미 이동 중이면 무시 (즉시 차단)
+    if (isNavigatingRef.current) return;
+
+    // ✨ [수정] 잠금 설정
+    isNavigatingRef.current = true;
+
     router.push(`/chat/${chatRoomId}`);
+
+    // ✨ [수정] 화면 전환 애니메이션 시간 동안 잠금 유지 (1.5초)
+    setTimeout(() => {
+      isNavigatingRef.current = false;
+    }, 1500);
   }, [router]);
 
   const handleLongPressChatRoom = useCallback((chatRoomId: string, roomName: string) => {

@@ -1,5 +1,3 @@
-// app/(tabs)/taxiparty.tsx
-
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
@@ -16,7 +14,7 @@ import {
   setDoc,
   updateDoc
 } from 'firebase/firestore';
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -66,8 +64,7 @@ const MemberSlots = ({ current, limit }: { current: number, limit: number }) => 
   );
 };
 
-// ✨ [최적화] user 객체 대신 currentUserId(string)만 받음
-const PartyItem = memo(({ item, currentUserId, onPressProfile, onJoin, onChat, onFinish, onDelete }: any) => {
+const PartyItem = memo(({ item, currentUserId, onPressProfile, onJoin, onChat, onFinish, onDelete, isNavigating }: any) => {
     const isCreator = currentUserId && currentUserId === item.creatorId;
     const isMember = currentUserId && item.currentMembers.includes(currentUserId);
     const isFull = item.currentMembers.length >= item.memberLimit;
@@ -157,17 +154,31 @@ const PartyItem = memo(({ item, currentUserId, onPressProfile, onJoin, onChat, o
                </TouchableOpacity>
              </View>
           ) : isMember ? (
-            <TouchableOpacity style={styles.chatBtn} onPress={() => onChat(item.id, item.pickupLocation, item.dropoffLocation)}>
-              <Ionicons name="chatbubbles" size={18} color="#fff" style={{marginRight:6}}/>
-              <Text style={styles.btnText}>채팅방 입장</Text>
+            <TouchableOpacity 
+                style={[styles.chatBtn, isNavigating && { opacity: 0.7, backgroundColor: '#a5d6a7' }]} 
+                onPress={() => onChat(item.id, item.pickupLocation, item.dropoffLocation)}
+                disabled={isNavigating}
+            >
+                {isNavigating ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                    <>
+                        <Ionicons name="chatbubbles" size={18} color="#fff" style={{marginRight:6}}/>
+                        <Text style={styles.btnText}>채팅방 입장</Text>
+                    </>
+                )}
             </TouchableOpacity>
           ) : (
             <TouchableOpacity 
-              style={[styles.joinBtn, isFull && styles.disabledBtn]} 
+              style={[styles.joinBtn, (isFull || isNavigating) && styles.disabledBtn]} 
               onPress={() => onJoin(item)}
-              disabled={isFull}
+              disabled={isFull || isNavigating}
             >
-              <Text style={styles.joinBtnText}>{isFull ? '모집이 마감되었습니다' : '이 파티에 참여하기'}</Text>
+              {isNavigating ? (
+                  <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                  <Text style={styles.joinBtnText}>{isFull ? '모집이 마감되었습니다' : '이 파티에 참여하기'}</Text>
+              )}
             </TouchableOpacity>
           )}
         </View>
@@ -186,8 +197,10 @@ export default function TaxiPartyScreen() {
   const [loading, setLoading] = useState(true);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   
-  // ✨ 운행 종료 모달 상태
   const [finishParty, setFinishParty] = useState<TaxiParty | null>(null);
+
+  const [isNavigating, setIsNavigating] = useState(false);
+  const isNavigatingRef = useRef(false);
 
   useEffect(() => {
     const q = query(collection(db, "taxiParties"), orderBy("createdAt", "desc"));
@@ -217,35 +230,42 @@ export default function TaxiPartyScreen() {
     ]);
   };
 
+  // ✨ [수정] 운행 완료 처리 로직 변경
   const handleFinishParty = (party: TaxiParty) => {
-    // 바로 모달을 띄움
+    // 1. 나 혼자 탑승한 경우 (멤버 수가 1명)
+    if (party.currentMembers.length === 1) {
+        Alert.alert(
+            "나홀로 탑승", 
+            "택시 탑승 인원이 작성자 뿐이라서 게시글이 삭제됩니다.\n신뢰도, 페널티는 없습니다.",
+            [
+                { text: "취소", style: "cancel" },
+                { 
+                    text: "확인 및 삭제", 
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            // 평가 로직 없이 바로 삭제
+                            await deleteDoc(doc(db, "taxiParties", party.id));
+                        } catch (e) {
+                            Alert.alert("오류", "삭제 중 문제가 발생했습니다.");
+                        }
+                    }
+                }
+            ]
+        );
+        return; // 여기서 함수 종료 (모달 안 띄움)
+    }
+
+    // 2. 동승자가 있는 경우 -> 기존대로 평가 모달 띄우기
     setFinishParty(party);
   };
 
-  const handleJoinParty = async (party: TaxiParty) => {
-    if (!user) { Alert.alert("로그인 필요", "로그인이 필요합니다."); return; }
-    if (party.currentMembers.includes(user.uid)) {
-        navigateToPartyChat(party.id, party.pickupLocation, party.dropoffLocation);
-        return;
-    }
-    if (party.currentMembers.length >= party.memberLimit) {
-        Alert.alert("인원 초과", "모집 인원이 가득 찼습니다.");
-        return;
-    }
-    Alert.alert("참여", "파티에 참여하시겠습니까?", [
-        { text: "취소", style: "cancel" },
-        { text: "참여", onPress: async () => {
-            await updateDoc(doc(db, "taxiParties", party.id), { currentMembers: arrayUnion(user.uid) });
-            navigateToPartyChat(party.id, party.pickupLocation, party.dropoffLocation);
-        }}
-    ]);
-  };
-
-  const navigateToPartyChat = async (partyId: string, pickupLocation: string, dropoffLocation: string) => {
+  const processEnterChat = async (partyId: string, pickupLocation: string, dropoffLocation: string) => {
     if (!user) return;
 
     const chatRoomId = `party-${partyId}`;
     const chatRoomRef = doc(db, "chatRooms", chatRoomId);
+    
     try {
         const partySnap = await getDoc(doc(db, "taxiParties", partyId));
         if (!partySnap.exists()) return;
@@ -263,7 +283,61 @@ export default function TaxiPartyScreen() {
         }, { merge: true });
 
         router.push(`/chat/${chatRoomId}`);
-    } catch (e) { console.error(e); }
+        
+        setTimeout(() => {
+            isNavigatingRef.current = false;
+            setIsNavigating(false);
+        }, 1500);
+
+    } catch (e) { 
+        console.error(e);
+        isNavigatingRef.current = false;
+        setIsNavigating(false);
+    }
+  };
+
+  const handleEnterChatButton = async (partyId: string, pickupLocation: string, dropoffLocation: string) => {
+    if (isNavigatingRef.current) return;
+    
+    isNavigatingRef.current = true;
+    setIsNavigating(true);
+    
+    await processEnterChat(partyId, pickupLocation, dropoffLocation);
+  };
+
+  const handleJoinParty = async (party: TaxiParty) => {
+    if (!user) { Alert.alert("로그인 필요", "로그인이 필요합니다."); return; }
+    
+    if (party.currentMembers.includes(user.uid)) {
+        handleEnterChatButton(party.id, party.pickupLocation, party.dropoffLocation);
+        return;
+    }
+    
+    if (isNavigatingRef.current) return;
+
+    if (party.currentMembers.length >= party.memberLimit) {
+        Alert.alert("인원 초과", "모집 인원이 가득 찼습니다.");
+        return;
+    }
+
+    Alert.alert("참여", "파티에 참여하시겠습니까?", [
+        { text: "취소", style: "cancel" },
+        { text: "참여", onPress: async () => {
+            if (isNavigatingRef.current) return;
+            
+            isNavigatingRef.current = true;
+            setIsNavigating(true);
+
+            try {
+                await updateDoc(doc(db, "taxiParties", party.id), { currentMembers: arrayUnion(user.uid) });
+                await processEnterChat(party.id, party.pickupLocation, party.dropoffLocation);
+            } catch (e) {
+                console.error(e);
+                isNavigatingRef.current = false;
+                setIsNavigating(false);
+            }
+        }}
+    ]);
   };
 
   const renderPartyItem = useCallback(({ item }: { item: TaxiParty }) => (
@@ -272,11 +346,12 @@ export default function TaxiPartyScreen() {
         currentUserId={user?.uid} 
         onPressProfile={setProfileUserId}
         onJoin={handleJoinParty}
-        onChat={navigateToPartyChat}
-        onFinish={handleFinishParty} 
+        onChat={handleEnterChatButton} 
+        onFinish={handleFinishParty} // ✨ 수정된 함수 전달
         onDelete={handleDeleteParty}
+        isNavigating={isNavigating} 
       />
-  ), [user]);
+  ), [user, isNavigating]);
 
   return (
     <View style={[styles.container]}>
@@ -300,7 +375,6 @@ export default function TaxiPartyScreen() {
         />
       )}
 
-      {/* ✨ FAB 위치 수정됨 (안드로이드에서도 탭바 피함) */}
       <TouchableOpacity style={styles.fab} onPress={handleCreateParty}>
         <Ionicons name="add" size={32} color="white" />
       </TouchableOpacity>
@@ -311,7 +385,6 @@ export default function TaxiPartyScreen() {
         onClose={() => setProfileUserId(null)}
       />
 
-      {/* ✨ 운행 종료 모달 연결 */}
       {finishParty && (
         <TaxiFinishModal
             visible={!!finishParty}
@@ -491,7 +564,7 @@ const styles = StyleSheet.create({
 
   fab: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 100 : 90, // ✨ 안드로이드 높이 수정 (탭바 회피)
+    bottom: Platform.OS === 'ios' ? 100 : 90, 
     right: 20,
     width: 60,
     height: 60,

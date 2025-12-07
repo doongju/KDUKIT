@@ -4,10 +4,11 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-// ✨ [수정] getDoc, doc 추가
 import { addDoc, collection, doc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { useState } from 'react';
+// ✨ [수정] useRef 추가
+import { useRef, useState } from 'react';
 import {
+  ActivityIndicator, // ✨ 로딩 표시를 위해 추가
   Alert,
   KeyboardAvoidingView,
   Modal,
@@ -150,7 +151,14 @@ export default function CreatePartyScreen() {
   const [customPickup, setCustomPickup] = useState(''); 
   const [customDropoff, setCustomDropoff] = useState(''); 
 
+  // ✨ [추가] 중복 생성 방지용 상태 및 Ref
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
+
   const handleCreateParty = async () => {
+    // ✨ [추가] 이미 제출 중이면 즉시 차단
+    if (isSubmittingRef.current) return;
+
     const auth = getAuth();
     const user = auth.currentUser;
 
@@ -168,8 +176,12 @@ export default function CreatePartyScreen() {
       return;
     }
 
+    // ✨ [추가] 제출 시작 (잠금)
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+
     try {
-      // ✨ [추가] 사용자 정보(displayId) 가져오기
+      // 사용자 정보(displayId) 가져오기
       const userDocRef = doc(db, "users", user.uid);
       const userSnapshot = await getDoc(userDocRef);
       
@@ -188,17 +200,30 @@ export default function CreatePartyScreen() {
         memberLimit,
         currentMembers: [user.uid], 
         creatorId: user.uid,
-        // ✨ [추가] 개설자 이름(식별 ID) 저장
         creatorName: authorName,
         createdAt: serverTimestamp(),
       };
       
       await addDoc(collection(db, "taxiParties"), partyDetails);
-      Alert.alert('파티 생성 완료', '새로운 택시 파티가 생성되었습니다!');
-      router.back();
+      
+      Alert.alert('파티 생성 완료', '새로운 택시 파티가 생성되었습니다.', [
+        {
+          text: '확인', 
+          onPress: () => {
+            // 뒤로가기 시 컴포넌트가 언마운트되므로 굳이 lock을 풀 필요는 없지만,
+            // 안전하게 처리합니다.
+            router.back();
+          }
+        }
+      ]);
+
     } catch (error: any) {
       console.error("파티 생성 중 오류 발생: ", error);
       Alert.alert("오류", "파티 생성에 실패했습니다. 다시 시도해주세요.");
+      
+      // ✨ [추가] 실패 시에만 잠금 해제
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -307,8 +332,17 @@ export default function CreatePartyScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.createButton} onPress={handleCreateParty}>
-            <Text style={styles.createButtonText}>파티 생성하기</Text>
+          <TouchableOpacity 
+            // ✨ [추가] 제출 중이면 스타일 변경 및 비활성화
+            style={[styles.createButton, isSubmitting && { backgroundColor: '#ccc' }]} 
+            onPress={handleCreateParty}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+               <ActivityIndicator color="#fff" />
+            ) : (
+               <Text style={styles.createButtonText}>파티 생성하기</Text>
+            )}
           </TouchableOpacity>
 
         </ScrollView>
