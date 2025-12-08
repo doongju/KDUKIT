@@ -235,7 +235,7 @@ Email: ${user.email}
                     text: "예 (모두 삭제)", 
                     style: 'destructive', 
                     onPress: async () => {
-                        await performDelete();
+                        setPasswordModalVisible(true);
                     }
                 }
             ]
