@@ -12,7 +12,6 @@ import {
   setDoc,
   updateDoc
 } from 'firebase/firestore';
-// ✨ [수정] useRef 추가
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -60,7 +59,7 @@ export default function ClubDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // ✨ [수정] 중복 네비게이션 방지 상태 및 Ref 추가
+  // ✨ 중복 네비게이션 방지 상태 및 Ref
   const [isNavigating, setIsNavigating] = useState(false);
   const isNavigatingRef = useRef(false);
 
@@ -119,27 +118,28 @@ export default function ClubDetailScreen() {
   };
 
   const handleApplyAndChat = async () => {
-    // ✨ [수정] 이미 네비게이션 중이면 중단 (중복 클릭 방지)
+    // ✨ 이미 네비게이션 중이면 중단 (중복 클릭 방지)
     if (!currentUser || !post || isNavigatingRef.current) return;
 
     if (post.creatorId === currentUser.uid) {
        return Alert.alert("알림", "본인이 개설한 동아리입니다.");
     }
 
-    const isMember = post.currentMembers.includes(currentUser.uid);
+    // ✨ [수정됨] 안전한 접근 (post나 currentUser가 null일 때 에러 방지)
+    const isUserMember = post.currentMembers?.includes(currentUser.uid) ?? false;
     
     // 이미 멤버가 아닌데 정원이 꽉 찼다면 차단
-    if (!isMember && post.currentMembers.length >= post.memberLimit) {
+    if (!isUserMember && post.currentMembers.length >= post.memberLimit) {
         return Alert.alert("마감", "모집 인원이 가득 찼습니다.");
     }
 
-    // ✨ [수정] 네비게이션 잠금 시작
+    // ✨ 네비게이션 잠금 시작
     isNavigatingRef.current = true;
     setIsNavigating(true);
 
     try {
         // 1. 멤버가 아니라면 추가 (신청 처리)
-        if (!isMember) {
+        if (!isUserMember) {
             await updateDoc(doc(db, 'clubPosts', post.id), {
                 currentMembers: arrayUnion(currentUser.uid)
             });
@@ -174,7 +174,7 @@ export default function ClubDetailScreen() {
         // 3. 채팅방으로 이동
         router.push(`/chat/${chatRoomId}`);
 
-        // ✨ [수정] 화면 전환 애니메이션 시간 동안 잠금 유지 (1.5초)
+        // ✨ 화면 전환 애니메이션 시간 동안 잠금 유지 (1.5초)
         setTimeout(() => {
             isNavigatingRef.current = false;
             setIsNavigating(false);
@@ -208,7 +208,11 @@ export default function ClubDetailScreen() {
     : (post.imageUrl ? [post.imageUrl] : []);
 
   const isOwner = currentUser?.uid === post.creatorId;
-  const isMember = currentUser && post.currentMembers.includes(currentUser.uid);
+  
+  // ✨ [수정됨] 안전한 접근 (Red line fix)
+  // post나 currentUser가 null이면 false로 처리
+  const isMember = post?.currentMembers?.includes(currentUser?.uid || '') ?? false;
+  
   const isFull = post.currentMembers.length >= post.memberLimit;
 
   return (
