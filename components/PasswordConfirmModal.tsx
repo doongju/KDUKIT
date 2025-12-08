@@ -4,20 +4,22 @@ import { Ionicons } from '@expo/vector-icons';
 import { EmailAuthProvider, getAuth, reauthenticateWithCredential } from 'firebase/auth';
 import { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
-  onSuccess: () => void; // 인증 성공 시 실행할 함수 (탈퇴 로직)
+  onSuccess: () => void;
 }
 
 export default function PasswordConfirmModal({ visible, onClose, onSuccess }: Props) {
@@ -36,16 +38,12 @@ export default function PasswordConfirmModal({ visible, onClose, onSuccess }: Pr
 
     setLoading(true);
     try {
-      // 1. 이메일/비번으로 자격 증명 생성
       const credential = EmailAuthProvider.credential(user.email, password);
-      
-      // 2. 재인증 시도 (여기서 로그인 갱신됨)
       await reauthenticateWithCredential(user, credential);
       
-      // 3. 성공 시 비밀번호 초기화 후 성공 콜백 실행
       setPassword('');
       onSuccess(); 
-      onClose(); // 모달 닫기
+      onClose();
       
     } catch (error: any) {
       console.error(error);
@@ -61,53 +59,72 @@ export default function PasswordConfirmModal({ visible, onClose, onSuccess }: Pr
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-          <View style={styles.header}>
-            <Text style={styles.title}>본인 확인</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color="#999" />
+      {/* 수정 포인트: 
+        1. 안드로이드도 'padding'을 사용하여 밀어 올리는 애니메이션 효과를 줌
+        2. keyboardVerticalOffset에 음수 값을 주어 너무 높이 올라가는 것을 방지 (-100 ~ -200 사이 조절)
+      */}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : -150} 
+        style={styles.keyboardView}
+      >
+        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
+          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+            <View style={styles.header}>
+              <Text style={styles.title}>본인 확인</Text>
+              <TouchableOpacity onPress={onClose}>
+                <Ionicons name="close" size={24} color="#999" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.desc}>
+              안전한 회원 탈퇴를 위해{'\n'}비밀번호를 한 번 더 입력해주세요.
+            </Text>
+
+            <TextInput 
+              style={styles.input}
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+              autoCapitalize="none"
+              placeholder="비밀번호 입력"
+              placeholderTextColor="#aaa"
+            />
+
+            <TouchableOpacity 
+              style={[styles.confirmBtn, loading && { backgroundColor: '#ccc' }]} 
+              onPress={handleReauth}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.confirmBtnText}>확인</Text>
+              )}
             </TouchableOpacity>
           </View>
-
-          <Text style={styles.desc}>
-            안전한 회원 탈퇴를 위해{'\n'}비밀번호를 한 번 더 입력해주세요.
-          </Text>
-
-          <TextInput 
-            style={styles.input}
-            placeholder="비밀번호 입력"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            autoCapitalize="none"
-          />
-
-          <TouchableOpacity 
-            style={[styles.confirmBtn, loading && { backgroundColor: '#ccc' }]} 
-            onPress={handleReauth}
-            disabled={loading}
-          >
-            {loading ? (
-                <ActivityIndicator color="#fff" />
-            ) : (
-                <Text style={styles.confirmBtnText}>확인</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardView: {
+    flex: 1,
+  },
   overlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center', alignItems: 'center',
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center', 
+    alignItems: 'center',
   },
   modalContent: {
-    width: '85%', backgroundColor: '#fff', borderRadius: 16,
-    padding: 20, elevation: 5,
+    width: '85%', 
+    backgroundColor: '#fff', 
+    borderRadius: 16,
+    padding: 20, 
+    elevation: 5,
   },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15
