@@ -138,23 +138,40 @@ export default function ClubDetailScreen() {
     const sortedUids = [targetUserId, currentUserId].sort();
     const chatRoomId = `dm_${postId}_${sortedUids.join('_')}`; 
     const chatRoomRef = doc(db, "chatRooms", chatRoomId);
+    
     try {
       const chatRoomSnap = await getDoc(chatRoomRef);
       if (!chatRoomSnap.exists()) {
-        let department = "학과미정";
-        try {
-          const userSnap = await getDoc(doc(db, "users", currentUserId));
-          if (userSnap.exists() && userSnap.data().department) department = userSnap.data().department;
-        } catch {}
+        
+        let roomName = "문의 채팅방";
 
-        let roomName = `${department} 문의`;
-        if (currentUser?.email) {
-           const prefix = currentUser.email.split('@')[0];
-           roomName = `${prefix}님 ${department} 문의`;
+        try {
+          // ✨ [수정] 상대방 유저 정보 가져오기
+          // (내 이름이 아니라, 글 작성자의 displayId로 방 이름을 만들어야 헷갈리지 않음)
+          // 혹은, '내' 정보를 가져와서 상대방에게 내 이름을 보여주고 싶다면 currentUserId 사용.
+          // 보통 1:1 채팅방 이름은 "상대방 이름"으로 설정하는 게 일반적입니다.
+          // 여기서는 "신청자(나)"의 정보를 가져와서 방 이름으로 설정하는 것 같네요.
+          const userSnap = await getDoc(doc(db, "users", currentUserId));
+          
+          if (userSnap.exists()) {
+            const userData = userSnap.data();
+            
+            // ✨ [핵심] displayId가 있으면 그걸 씀!
+            if (userData.displayId) {
+                roomName = `${userData.displayId} 문의`;
+            } 
+            // displayId가 없으면 기존 로직 (학번 + 학과)
+            else if (userData.department && currentUser?.email) {
+               const prefix = currentUser.email.split('@')[0];
+               roomName = `${prefix}님 ${userData.department} 문의`;
+            }
+          }
+        } catch (e) {
+            console.error("유저 정보 조회 실패", e);
         }
 
         await setDoc(chatRoomRef, {
-          name: roomName,
+          name: roomName, // ✨ 수정된 이름 저장
           members: sortedUids,
           type: 'club',
           clubId: postId,
@@ -162,6 +179,7 @@ export default function ClubDetailScreen() {
           lastReadBy: {[targetUserId]: serverTimestamp(), [currentUserId]: serverTimestamp()}
         });
       } else {
+        // 이미 방이 있으면 멤버만 업데이트 (혹시나 해서)
         await updateDoc(chatRoomRef, { members: arrayUnion(targetUserId, currentUserId) });
       }
       router.push(`/chat/${chatRoomId}`);
