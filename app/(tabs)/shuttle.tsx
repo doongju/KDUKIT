@@ -508,7 +508,7 @@ const ShuttleScreen = () => {
 
         <View style={styles.cardBody}>
           <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>실시간 현황</Text>
+            <Text style={styles.statusLabel}>예상 대기 인원</Text>
             <View style={{alignItems: 'flex-end'}}>
                 <Text style={[styles.statusValue, !showCount && { fontSize: 14, color: '#888' }]}>
                 {isOpen ? displayCountText : '-'}
