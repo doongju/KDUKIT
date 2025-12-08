@@ -48,21 +48,26 @@ export default function ReportModal({ visible, targetUserId, targetUserName, onC
       const currentUser = auth.currentUser;
       if (!currentUser) return;
 
-      // 1. 중복 신고 방지
+      // 1. [수정] 7일 이내 중복 신고 방지
+      // (1) 7일 전 날짜 계산
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      // (2) 내가 이 사람을 신고한 내역 중, 최근 7일 이내인 것이 있는지 조회
       const checkQuery = query(
         collection(db, 'reports'),
         where('reporterId', '==', currentUser.uid),
-        where('targetId', '==', targetUserId)
+        where('targetId', '==', targetUserId),
+        where('createdAt', '>=', sevenDaysAgo) // ✨ 7일 이내 조건 추가
       );
       
       const checkSnap = await getDocs(checkQuery);
       
       if (!checkSnap.empty) {
-        Alert.alert("신고 불가", "이미 신고한 사용자입니다.");
+        Alert.alert("신고 불가", "이미 최근 7일 이내에 신고한 사용자입니다.\n(7일 후 다시 신고 가능합니다.)");
         setLoading(false);
         return;
       }
-
       const targetUserRef = doc(db, "users", targetUserId);
       
       // 2. 현재 신고 횟수 가져오기
