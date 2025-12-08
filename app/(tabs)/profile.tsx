@@ -87,7 +87,7 @@ export default function ProfileScreen() {
                 });
             } else {
                 setUserProfile(null); 
-            }
+            }   
             setLoading(false);
         }, (error) => {
             if (error.code === 'permission-denied') return;
@@ -97,7 +97,7 @@ export default function ProfileScreen() {
         return () => unsubscribeProfile();
     }, [user]);
 
-    const fetchBlockedUsers = useCallback(async (blockedIds: string[]) => {
+const fetchBlockedUsers = useCallback(async (blockedIds: string[]) => {
         if (!blockedIds || blockedIds.length === 0) { setBlockedList([]); return; }
         setLoadingBlocked(true);
         try {
@@ -107,14 +107,23 @@ export default function ProfileScreen() {
                     if (userSnap.exists()) {
                         const d = userSnap.data();
                         let name = "알 수 없음";
-                        if (d.department) {
+
+                        // ✨ [수정됨] 차단 목록에서도 displayId를 최우선으로 표시
+                        if (d.displayId) {
+                            name = d.displayId;
+                        } 
+                        // displayId가 없을 때만 기존 방식(학번/학과 조합) 사용
+                        else if (d.department) {
                             if (d.email) {
                                 const prefix = d.email.split('@')[0];
                                 const two = prefix.substring(0, 2);
                                 if (!isNaN(Number(two)) && two.length === 2) name = `${two}학번 ${d.department}`;
                                 else name = `${prefix}님 ${d.department}`;
                             } else { name = d.department; }
+                        } else if (d.displayName) {
+                             name = d.displayName;
                         }
+                        
                         return { uid, displayName: name };
                     }
                 } catch { return null; }

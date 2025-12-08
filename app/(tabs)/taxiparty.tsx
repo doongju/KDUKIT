@@ -435,7 +435,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 15,
-    height: 24,
+    //height: 24,
+    alignItems: 'center',
   },
   myBadge: {
     backgroundColor: '#0062ffff',
