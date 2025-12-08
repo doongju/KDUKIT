@@ -1,12 +1,10 @@
-// app/(tabs)/create-club.tsx
-
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-// ✨ [수정] getDoc 추가
 import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+// ✨ [수정] useRef 추가
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -52,6 +50,9 @@ export default function CreateClubScreen() {
   const [creatingPost, setCreatingPost] = useState(false);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
+
+  // ✨ [추가] 중복 제출 방지용 Ref
+  const isSubmittingRef = useRef(false);
 
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [modalType, setModalType] = useState<'activityField' | 'memberLimit' | null>(null);
@@ -175,6 +176,9 @@ export default function CreateClubScreen() {
   };
 
   const handleSave = async () => {
+    // ✨ [수정] 이미 제출 중이면 함수 종료 (중복 클릭 차단)
+    if (isSubmittingRef.current) return;
+
     if (!currentUser) { Alert.alert("로그인 필요", "로그인이 필요합니다."); return; }
     if (!clubName.trim() || !description.trim() || !activityField || !memberLimit) { 
         return Alert.alert("모든 입력 칸을 채워야 합니다."); 
@@ -185,11 +189,13 @@ export default function CreateClubScreen() {
         return Alert.alert("모집 인원은 2명 이상이어야 합니다.");
     }
 
+    // ✨ [수정] 제출 시작 (잠금)
+    isSubmittingRef.current = true;
     setCreatingPost(true);
     setUploadingImage(true);
 
     try {
-      // ✨ [추가] 사용자 정보(displayId) 가져오기 로직
+      // 사용자 정보(displayId) 가져오기 로직
       const userDocRef = doc(db, "users", currentUser.uid);
       const userSnapshot = await getDoc(userDocRef);
       
@@ -197,7 +203,7 @@ export default function CreateClubScreen() {
       if (userSnapshot.exists()) {
           const userData = userSnapshot.data();
           if (userData.displayId) {
-              authorName = userData.displayId; // 예: "12학번 컴퓨터공학과 #A123"
+              authorName = userData.displayId;
           }
       }
 
@@ -206,6 +212,8 @@ export default function CreateClubScreen() {
       const finalImageUrls = uploadedUrls.filter((url): url is string => url !== null);
 
       if (imageUrls.length > 0 && finalImageUrls.length === 0) {
+           // 업로드 실패 시 잠금 해제
+           isSubmittingRef.current = false;
            setCreatingPost(false);
            setUploadingImage(false);
            Alert.alert("오류", "이미지 업로드에 실패했습니다.");
@@ -221,8 +229,6 @@ export default function CreateClubScreen() {
           imageUrl: finalImageUrls[0] || null, 
           imageUrls: finalImageUrls, 
           type: 'club',
-          
-          // ✨ [추가] 작성자 식별 ID 저장
           creatorName: authorName, 
       };
 
@@ -239,17 +245,22 @@ export default function CreateClubScreen() {
         });
         Alert.alert("등록 완료", "모집글이 등록되었습니다.");
       }
+      
       router.back();
+
     } catch (error: any) {
+      // 실패 시에만 잠금 해제
+      isSubmittingRef.current = false;
+      setCreatingPost(false);
+      setUploadingImage(false);
+
       if (error.code === 'permission-denied') {
         Alert.alert("이용 제한", "신고 누적으로 인해 글 작성이 제한되었습니다.");
       } else {
         Alert.alert("실패", "저장 중 오류가 발생했습니다.");
       }
-    } finally {
-      setCreatingPost(false);
-      setUploadingImage(false);
-    }
+    } 
+    // 성공 시에는 router.back()으로 화면이 언마운트되므로 finally에서 풀지 않아도 됨
   };
 
   const renderModalContent = () => {
@@ -276,7 +287,6 @@ export default function CreateClubScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header - 완료 버튼 제거 */}
       <View style={[styles.header, { paddingTop: Platform.OS === 'android' ? 10 : 0 }]}>
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Ionicons name="close" size={28} color="#333" />
@@ -296,14 +306,13 @@ export default function CreateClubScreen() {
               contentContainerStyle={styles.scrollContent} 
               showsVerticalScrollIndicator={false}
           >
-              
-              {/* 이미지 섹션 */}
               <View style={styles.imageSection}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.imageList}>
                       {imageUrls.length < MAX_IMAGES && (
                           <TouchableOpacity 
                               style={styles.addImageButton} 
                               onPress={pickImage} 
+                              // ✨ [수정] 제출 중이면 버튼 비활성화
                               disabled={uploadingImage || creatingPost}
                           >
                               <Ionicons name="camera" size={24} color="#aaa" />
@@ -330,7 +339,6 @@ export default function CreateClubScreen() {
                   </ScrollView>
               </View>
 
-              {/* 입력 폼 */}
               <View style={styles.formContainer}>
                   <View style={styles.inputGroup}>
                       <Text style={styles.label}>모임 이름</Text>
@@ -398,8 +406,8 @@ export default function CreateClubScreen() {
                   </View>
               </View>
 
-              {/* 등록 버튼 */}
               <TouchableOpacity 
+                  // ✨ [수정] 제출 중이면 버튼 스타일 변경 및 비활성화
                   style={[
                       styles.registerButton, 
                       creatingPost && styles.disabledButton
@@ -416,7 +424,6 @@ export default function CreateClubScreen() {
                   )}
               </TouchableOpacity>
               
-              {/* 키보드 대응 여백 */}
               <View style={{ height: 60 }} />
 
           </ScrollView>
@@ -477,10 +484,10 @@ const styles = StyleSheet.create({
       position: 'absolute', 
       top: 4, 
       right: 4,
-      width: 20, // 크기 고정
+      width: 20, 
       height: 20, 
-      borderRadius: 10, // 완벽한 원형
-      backgroundColor: 'rgba(0,0,0,0.6)', // 반투명 검은색 배경
+      borderRadius: 10, 
+      backgroundColor: 'rgba(0,0,0,0.6)', 
       justifyContent: 'center', 
       alignItems: 'center', 
       zIndex: 1
@@ -510,11 +517,11 @@ const styles = StyleSheet.create({
   textArea: { minHeight: 150, lineHeight: 24 },
 
   registerButton: { 
-    backgroundColor: '#0062ffff', // 메인 컬러
+    backgroundColor: '#0062ffff', 
     paddingVertical: 18, 
     borderRadius: 12, 
     alignItems: 'center', 
-    marginTop: 30, // 폼과의 간격
+    marginTop: 30, 
     elevation: 2, 
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
