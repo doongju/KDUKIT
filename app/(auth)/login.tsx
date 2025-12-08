@@ -114,13 +114,13 @@ export default function LoginScreen() {
         blurRadius={1}
     >
         <StatusBar style="dark" />
-
+        <View style={styles.overlay}>
         <KeyboardAvoidingView 
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.keyboardAvoidingView}
         >
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                <View style={styles.overlay}>
+                
                     <SafeAreaView style={styles.safeArea}>
                         <View style={styles.contentContainer}>
                             <RNText style={styles.mainTitle}>KDU KIT.</RNText>
@@ -200,9 +200,10 @@ export default function LoginScreen() {
                             </View>
                         </View>
                     </SafeAreaView>
-                </View>
+                
             </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
+        </View>
     </ImageBackground>
   );
 }

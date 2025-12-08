@@ -268,7 +268,7 @@ export default function ChatRoomScreen() {
     return () => unsub();
   }, [chatRoomId, navigation]);
 
-  // 멤버 이름 로드
+// 멤버 이름 로드
   useEffect(() => {
     if (!chatRoom?.members) return;
     
@@ -282,16 +282,25 @@ export default function ChatRoomScreen() {
         try {
           const uSnap = await getDoc(doc(db, 'users', uid));
           let name = '알 수 없음';
+          
           if (uSnap.exists()) {
             const d = uSnap.data();
-            if (d.department) {
+
+            // ✨ [수정됨] 데이터베이스에 displayId가 있다면 그것을 1순위로 사용
+            if (d.displayId) {
+                name = d.displayId; 
+            } 
+            // displayId가 없는 경우(예전 데이터 등)를 대비한 기존 로직 백업
+            else if (d.department) {
                 if (d.email) {
                     const prefix = d.email.split('@')[0];
                     const two = prefix.substring(0, 2);
                     if (!isNaN(Number(two)) && two.length === 2) name = `${two}학번 ${d.department}`;
                     else name = `${prefix}님 ${d.department}`;
                 } else { name = d.department; }
-            } else if (d.displayName) name = d.displayName;
+            } else if (d.displayName) {
+                name = d.displayName;
+            }
           }
           newNames[uid] = name;
         } catch { newNames[uid] = '익명'; }
@@ -301,7 +310,7 @@ export default function ChatRoomScreen() {
     };
     
     fetchMissingNames();
-  }, [chatRoom?.members]);
+  }, [chatRoom?.members]); // 의존성 배열 유지
 
   // 메시지 업데이트 감지
   useEffect(() => {
